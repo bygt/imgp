@@ -1,27 +1,21 @@
-
-import warnings
-warnings.filterwarnings("ignore")
-
+import os
+import shutil
 import torch
 from PIL import Image
 from torchvision import transforms
 import numpy as np
-import os
 
-# Ayarlar
-image_path = "exmp.jpg"                    # Girdi görseli
-vector_dir = "vectors"                     # .npy dosyalarının saklanacağı klasör
-vector_path = os.path.join(                # exmp.npy olarak kaydedecek
-    vector_dir, os.path.splitext(os.path.basename(image_path))[0] + ".npy"
-)
+# Klasör yolları
+TEMP_LIB_DIR = "temp_lib"   # Yeni eklenecek klasör (library gibi)
+IMAGES_DIR = "images"
+VECTOR_DIR = "vectors"
 
-# DINOv2 modelini yükle
+# Model ve transform (mevcut batch_extract_features.py’den aynısı)
 print("Model yükleniyor...")
 model = torch.hub.load('facebookresearch/dinov2', 'dinov2_vitl14')
 model.eval()
 print("Model yüklendi.")
 
-# Görsel işleme adımları
 transform = transforms.Compose([
     transforms.Resize(518),
     transforms.CenterCrop(518),
@@ -30,20 +24,43 @@ transform = transforms.Compose([
                          std=[0.229, 0.224, 0.225])
 ])
 
-# Görseli aç
-image = Image.open(image_path).convert("RGB")
-input_tensor = transform(image).unsqueeze(0)
+os.makedirs(VECTOR_DIR, exist_ok=True)
+os.makedirs(IMAGES_DIR, exist_ok=True)
 
-# Özellik çıkar
-with torch.no_grad():
-    features = model(input_tensor)
+def extract_and_move(filename):
+    temp_path = os.path.join(TEMP_LIB_DIR, filename)
+    vector_path = os.path.join(VECTOR_DIR, os.path.splitext(filename)[0] + ".npy")
+    image_path = os.path.join(IMAGES_DIR, filename)
 
-vector = features.squeeze().cpu().numpy()
-print("Feature vector shape:", vector.shape)
+    # Eğer zaten vektör varsa atla
+    if os.path.exists(vector_path):
+        print(f"Atlandı (vektör zaten var): {filename}")
+        return
 
-# vectors klasörü yoksa oluştur
-os.makedirs(vector_dir, exist_ok=True)
+    try:
+        image = Image.open(temp_path).convert("RGB")
+        input_tensor = transform(image).unsqueeze(0)
 
-# .npy olarak kaydet
-np.save(vector_path, vector)
-print(f"Vektör kaydedildi: {vector_path}")
+        with torch.no_grad():
+            features = model(input_tensor)
+
+        vector = features.squeeze().cpu().numpy()
+        np.save(vector_path, vector)
+        print(f"✓ Kaydedildi: {filename} -> {vector_path}")
+
+        # Görseli temp_lib'den images klasörüne taşı
+        shutil.move(temp_path, image_path)
+        print(f"✓ Taşındı: {filename} -> {IMAGES_DIR}")
+
+    except Exception as e:
+        print(f"Hata ({filename}):", e)
+
+if __name__ == "__main__":
+    if not os.path.exists(TEMP_LIB_DIR):
+        print(f"{TEMP_LIB_DIR} klasörü bulunamadı!")
+    else:
+        files = [f for f in os.listdir(TEMP_LIB_DIR) if f.lower().endswith(".jpg")]
+        if not files:
+            print(f"{TEMP_LIB_DIR} içinde işlenecek dosya yok.")
+        for file in files:
+            extract_and_move(file)
