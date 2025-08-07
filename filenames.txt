@@ -1,5 +1,6 @@
 exmp.npy
-jhbnjkl.npy
+mavitisort.npy
 Screenshot_1.npy
 Screenshot_2.npy
 Screenshot_3.npy
+yesiltisort.npy

@@ -57,18 +57,13 @@
     <div class="container">
         <h1>Upload and Search Image</h1>
         <form method="POST" enctype="multipart/form-data">
-            <div class="dropzone" id="dropzone">
-                <span id="dropzoneText">Drag & drop an image here or click to select</span>
+            <div class="dropzone" id="dropzone" tabindex="0">
+                <span id="dropzoneText">Drag & drop an image here, click or paste from clipboard</span>
                 <input type="file" name="image" accept="image/*" required id="fileInput" />
             </div>
-            <div class="preview" id="preview" style="display: {{ 'flex' if uploaded_image else 'none' }}">
-                {% if uploaded_image %}
-                    <img id="previewImg" src="{{ url_for('static', filename='uploads/' ~ uploaded_image) }}" alt="Preview" />
-                    <span id="previewText">{{ uploaded_image }}</span>
-                {% else %}
-                    <img id="previewImg" src="#" alt="Preview" />
-                    <span id="previewText"></span>
-                {% endif %}
+            <div class="preview" id="preview">
+                <img id="previewImg" src="#" alt="Preview" />
+                <span id="previewText"></span>
             </div>
             <button type="submit">Search</button>
         </form>
@@ -84,12 +79,12 @@
             <div>
                 <img src="{{ url_for('static', filename='images/' ~ path ~ '.jpg') }}" alt="{{ path }}" />
                 <div style="color:#fff; font-size:1rem;">Similarity: {{ "%.4f"|format(similarity) }}</div>
+                <div style="color:#bfcad6; font-size:0.95rem;">{{ path }}.jpg</div>
             </div>
             {% endfor %}
         </div>
         {% endif %}
     </div>
-
     <script>
         const dropzone = document.getElementById('dropzone');
         const fileInput = document.getElementById('fileInput');
@@ -101,8 +96,17 @@
         const loading = document.getElementById('loading');
 
         dropzone.addEventListener('click', () => fileInput.click());
-        dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('dragover'); });
-        dropzone.addEventListener('dragleave', e => { e.preventDefault(); dropzone.classList.remove('dragover'); });
+
+        dropzone.addEventListener('dragover', function(e) {
+            e.preventDefault();
+            dropzone.classList.add('dragover');
+        });
+
+        dropzone.addEventListener('dragleave', function(e) {
+            e.preventDefault();
+            dropzone.classList.remove('dragover');
+        });
+
         dropzone.addEventListener('drop', function(e) {
             e.preventDefault();
             dropzone.classList.remove('dragover');
@@ -110,6 +114,20 @@
             if (files.length > 0) {
                 fileInput.files = files;
                 handleFile(files[0]);
+            }
+        });
+
+        dropzone.addEventListener('paste', function(e) {
+            const items = (e.clipboardData || window.clipboardData).items;
+            for (let i = 0; i < items.length; i++) {
+                if (items[i].type.indexOf('image') !== -1) {
+                    const file = items[i].getAsFile();
+                    const dt = new DataTransfer();
+                    dt.items.add(file);
+                    fileInput.files = dt.files;
+                    handleFile(file);
+                    break;
+                }
             }
         });
 
@@ -129,7 +147,7 @@
                 }
                 reader.readAsDataURL(file);
             } else {
-                dropzoneText.textContent = 'Drag & drop an image here or click to select';
+                dropzoneText.textContent = 'Drag & drop an image here, click or paste from clipboard';
                 preview.style.display = 'none';
                 previewImg.src = '#';
                 previewText.textContent = '';

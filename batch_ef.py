@@ -13,7 +13,7 @@ import os
 import clip
 
 # Folder paths
-image_dir = "images"
+image_dir = "static/images"
 vector_dir = "vectors"
 
 print("Loading models...")
