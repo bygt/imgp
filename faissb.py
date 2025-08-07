@@ -1,11 +1,12 @@
-# build_faiss_index.py
+# faissb.py
 
 import os
-import faiss as faiss
+import faiss
 import numpy as np
 
 VECTOR_DIR = "vectors"
 INDEX_FILE = "faiss.index"
+FILENAMES_FILE = "filenames.txt"
 
 def load_vectors(vector_dir):
     vectors = []
@@ -21,21 +22,22 @@ def load_vectors(vector_dir):
     return np.stack(vectors), filenames
 
 def build_faiss_index():
-    print("Vektörler yükleniyor...")
+    print("Loading vectors...")
     vectors, filenames = load_vectors(VECTOR_DIR)
 
-    print(f"{len(vectors)} vektör yüklendi. FAISS index oluşturuluyor...")
-    index = faiss.IndexFlatL2(vectors.shape[1])
+    print(f"{len(vectors)} vectors loaded. Building FAISS index...")
+    dim = vectors.shape[1]
+
+    index = faiss.IndexFlatIP(dim)  # Inner Product for cosine similarity on normalized vectors
     index.add(vectors)
 
     faiss.write_index(index, INDEX_FILE)
     
-    # isimleri de ayrı kaydediyoruz
-    with open("filenames.txt", "w", encoding="utf-8") as f:
+    with open(FILENAMES_FILE, "w", encoding="utf-8") as f:
         for name in filenames:
             f.write(name + "\n")
 
-    print("FAISS index oluşturuldu ve kaydedildi.")
+    print("FAISS index created and saved.")
 
 if __name__ == "__main__":
     build_faiss_index()

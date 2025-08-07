@@ -1,22 +1,32 @@
+# single_ef.py
+
 import os
 import shutil
 import torch
 from PIL import Image
 from torchvision import transforms
 import numpy as np
+import clip
 
-# Klasör yolları
-TEMP_LIB_DIR = "temp_lib"   # Yeni eklenecek klasör (library gibi)
+# Folder paths
+TEMP_LIB_DIR = "temp_lib"
 IMAGES_DIR = "images"
 VECTOR_DIR = "vectors"
 
-# Model ve transform (mevcut batch_extract_features.py’den aynısı)
-print("Model yükleniyor...")
-model = torch.hub.load('facebookresearch/dinov2', 'dinov2_vitl14')
-model.eval()
-print("Model yüklendi.")
+print("Loading models...")
+device = "cuda" if torch.cuda.is_available() else "cpu"
 
-transform = transforms.Compose([
+# Load DINOv2
+dino_model = torch.hub.load('facebookresearch/dinov2', 'dinov2_vitl14').to(device)
+dino_model.eval()
+
+# Load CLIP
+clip_model, clip_preprocess = clip.load("ViT-L/14", device=device)
+clip_model.eval()
+print("Models loaded.")
+
+# DINO transform
+dino_transform = transforms.Compose([
     transforms.Resize(518),
     transforms.CenterCrop(518),
     transforms.ToTensor(),
@@ -32,35 +42,40 @@ def extract_and_move(filename):
     vector_path = os.path.join(VECTOR_DIR, os.path.splitext(filename)[0] + ".npy")
     image_path = os.path.join(IMAGES_DIR, filename)
 
-    # Eğer zaten vektör varsa atla
     if os.path.exists(vector_path):
-        print(f"Atlandı (vektör zaten var): {filename}")
+        print(f"Skipped (vector already exists): {filename}")
         return
 
     try:
         image = Image.open(temp_path).convert("RGB")
-        input_tensor = transform(image).unsqueeze(0)
+
+        dino_input = dino_transform(image).unsqueeze(0).to(device)
+        clip_input = clip_preprocess(image).unsqueeze(0).to(device)
 
         with torch.no_grad():
-            features = model(input_tensor)
+            dino_feat = dino_model(dino_input).squeeze().cpu().numpy()
+            clip_feat = clip_model.encode_image(clip_input).squeeze().cpu().numpy()
 
-        vector = features.squeeze().cpu().numpy()
-        np.save(vector_path, vector)
-        print(f"✓ Kaydedildi: {filename} -> {vector_path}")
+        dino_feat /= np.linalg.norm(dino_feat)
+        clip_feat /= np.linalg.norm(clip_feat)
 
-        # Görseli temp_lib'den images klasörüne taşı
+        combined_feat = np.concatenate([dino_feat, clip_feat])
+
+        np.save(vector_path, combined_feat)
+        print(f"✓ Saved: {filename} -> {vector_path}")
+
         shutil.move(temp_path, image_path)
-        print(f"✓ Taşındı: {filename} -> {IMAGES_DIR}")
+        print(f"✓ Moved: {filename} -> {IMAGES_DIR}")
 
     except Exception as e:
-        print(f"Hata ({filename}):", e)
+        print(f"Error ({filename}):", e)
 
 if __name__ == "__main__":
     if not os.path.exists(TEMP_LIB_DIR):
-        print(f"{TEMP_LIB_DIR} klasörü bulunamadı!")
+        print(f"{TEMP_LIB_DIR} folder not found!")
     else:
-        files = [f for f in os.listdir(TEMP_LIB_DIR) if f.lower().endswith(".jpg")]
+        files = [f for f in os.listdir(TEMP_LIB_DIR) if f.lower().endswith((".jpg", ".jpeg", ".png"))]
         if not files:
-            print(f"{TEMP_LIB_DIR} içinde işlenecek dosya yok.")
+            print(f"No files to process in {TEMP_LIB_DIR}.")
         for file in files:
             extract_and_move(file)
