@@ -8,7 +8,7 @@ import clip  # transformers yerine clip modülü kullanılacak
 
 INDEX_FILE = "faiss.index"
 FILENAMES_FILE = "filenames.txt"
-UPLOADS_DIR = "uploads"
+UPLOADS_DIR = "statics/uploads"
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
