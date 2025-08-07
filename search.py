@@ -4,30 +4,39 @@ import os
 from PIL import Image
 from torchvision import transforms
 import torch
-import clip  # transformers yerine clip modülü kullanılacak
+import clip
 
 INDEX_FILE = "faiss.index"
 FILENAMES_FILE = "filenames.txt"
-UPLOADS_DIR = "statics/uploads"
-
+UPLOADS_DIR = "static/uploads"
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
-# Load DINOv2 model
+# Model tanımları (ilk başta None)
+_dino_model = None
+_clip_model = None
+_clip_preprocess = None
+
+# DINO model yükle
 def load_dino_model():
-    print("Loading DINOv2 model...")
-    model = torch.hub.load('facebookresearch/dinov2', 'dinov2_vitl14').to(device)
-    model.eval()
-    print("DINOv2 model loaded.")
-    return model
+    global _dino_model
+    if _dino_model is None:
+        print("Loading DINOv2 model...")
+        _dino_model = torch.hub.load('facebookresearch/dinov2', 'dinov2_vitl14').to(device)
+        _dino_model.eval()
+        print("DINOv2 model loaded.")
+    return _dino_model
 
-# Load CLIP model
+# CLIP model yükle
 def load_clip_model():
-    print("Loading CLIP model...")
-    clip_model, clip_preprocess = clip.load("ViT-L/14", device=device)
-    clip_model.eval()
-    print("CLIP model loaded.")
-    return clip_model, clip_preprocess
+    global _clip_model, _clip_preprocess
+    if _clip_model is None or _clip_preprocess is None:
+        print("Loading CLIP model...")
+        _clip_model, _clip_preprocess = clip.load("ViT-L/14", device=device)
+        _clip_model.eval()
+        print("CLIP model loaded.")
+    return _clip_model, _clip_preprocess
 
+# DINO ile vektör çıkar
 def extract_dino_features(model, image_path):
     transform = transforms.Compose([
         transforms.Resize(518),
@@ -44,6 +53,7 @@ def extract_dino_features(model, image_path):
     vector /= np.linalg.norm(vector)
     return vector
 
+# CLIP ile vektör çıkar
 def extract_clip_features(clip_model, clip_preprocess, image_path):
     image = Image.open(image_path).convert("RGB")
     clip_input = clip_preprocess(image).unsqueeze(0).to(device)
@@ -53,6 +63,24 @@ def extract_clip_features(clip_model, clip_preprocess, image_path):
     vector /= np.linalg.norm(vector)
     return vector
 
+# 🔍 Ana fonksiyon
+def search_similar_images(image_path):
+    dino_model = load_dino_model()
+    clip_model, clip_preprocess = load_clip_model()
+
+    dino_vec = extract_dino_features(dino_model, image_path)
+    clip_vec = extract_clip_features(clip_model, clip_preprocess, image_path)
+    query_vector = np.concatenate((dino_vec, clip_vec)).astype('float32')
+
+    index = faiss.read_index(INDEX_FILE)
+    with open(FILENAMES_FILE, "r", encoding="utf-8") as f:
+        filenames = [line.strip() for line in f.readlines()]
+
+    distances, indices = index.search(np.array([query_vector]), 5)
+    results = [(filenames[i], float(dist)) for i, dist in zip(indices[0], distances[0])]
+    return results
+
+# CLI
 def main():
     if not os.path.exists(UPLOADS_DIR):
         print(f"{UPLOADS_DIR} folder not found!")
@@ -66,30 +94,13 @@ def main():
         print("Multiple images found in uploads folder, using the first one:", files[0])
 
     query_image_path = os.path.join(UPLOADS_DIR, files[0])
-
-    dino_model = load_dino_model()
-    clip_model, clip_preprocess = load_clip_model()
-
-    dino_vec = extract_dino_features(dino_model, query_image_path)
-    clip_vec = extract_clip_features(clip_model, clip_preprocess, query_image_path)
-
-    # Combine DINO and CLIP vectors (concatenate)
-    query_vector = np.concatenate((dino_vec, clip_vec)).astype('float32')
-
-    print("Loading FAISS index...")
-    index = faiss.read_index(INDEX_FILE)
-
-    with open(FILENAMES_FILE, "r", encoding="utf-8") as f:
-        filenames = [line.strip() for line in f.readlines()]
-
-    distances, indices = index.search(np.array([query_vector]), 5)
-    similarities = distances[0]
+    results = search_similar_images(query_image_path)
 
     print("\n🔍 Top similar images:")
-    for rank, (i, sim) in enumerate(zip(indices[0], similarities), start=1):
-        print(f"{rank}. {filenames[i]} - Similarity: {sim:.4f}")
+    for rank, (filename, sim) in enumerate(results, start=1):
+        print(f"{rank}. {filename} - Similarity: {sim:.4f}")
 
-    # Clean uploads folder
+    # Clean uploads
     for f in files:
         os.remove(os.path.join(UPLOADS_DIR, f))
     print("Uploads folder cleaned.")

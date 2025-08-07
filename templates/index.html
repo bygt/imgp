@@ -1,80 +1,145 @@
 <!DOCTYPE html>
-<html lang="tr">
+<html lang="en">
 <head>
     <meta charset="UTF-8" />
-    <title>Görsel Arama</title>
+    <title>Image Search</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <!-- Google Fonts: Roboto -->
     <link href="https://fonts.googleapis.com/css?family=Roboto:400,700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <style>
-        body {
-            font-family: 'Roboto', Arial, sans-serif;
-            background: linear-gradient(135deg, #e0eafc 0%, #cfdef3 100%);
-            min-height: 100vh;
-            margin: 0;
+        .similar-list {
             display: flex;
-            flex-direction: column;
-            align-items: center;
+            flex-wrap: wrap;
+            gap: 24px;
             justify-content: center;
+            margin-top: 20px;
         }
-        .container {
-            background: #fff;
-            padding: 2rem 2.5rem;
-            border-radius: 16px;
-            box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+        .similar-list > div {
+            background: #23272f;
+            border-radius: 12px;
+            padding: 16px;
+            width: 220px;
+            box-shadow: 0 2px 8px rgba(72,144,255,0.10);
             text-align: center;
-            max-width: 400px;
-            width: 100%;
         }
-        h1 {
-            margin-bottom: 1.5rem;
-            font-size: 2rem;
-            color: #2d3a4b;
-            font-weight: 700;
-        }
-        form {
-            display: flex;
-            flex-direction: column;
-            gap: 1.2rem;
-        }
-        input[type="file"] {
-            padding: 0.7rem;
-            border: 1px solid #bfcad6;
+        .similar-list img {
+            width: 180px;
             border-radius: 8px;
-            background: #f7fafd;
-            font-size: 1rem;
+            margin-bottom: 10px;
         }
-        button {
-            padding: 0.8rem;
-            background: linear-gradient(90deg, #4f8cff 0%, #38c6ff 100%);
-            color: #fff;
-            border: none;
-            border-radius: 8px;
-            font-size: 1.1rem;
-            font-weight: 700;
-            cursor: pointer;
-            transition: background 0.2s;
+        .similar-list div > div {
+            margin-bottom: 4px;
         }
-        button:hover {
-            background: linear-gradient(90deg, #38c6ff 0%, #4f8cff 100%);
+
+        /* Spinner CSS */
+        #loading {
+            display: none;
+            justify-content: center;
+            margin-top: 20px;
         }
-        @media (max-width: 500px) {
-            .container {
-                padding: 1rem;
-            }
-            h1 {
-                font-size: 1.3rem;
-            }
+
+        .spinner {
+            border: 6px solid #f3f3f3;
+            border-top: 6px solid #3498db;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>Görsel Yükle ve Ara</h1>
+        <h1>Upload and Search Image</h1>
         <form method="POST" enctype="multipart/form-data">
-            <input type="file" name="image" accept="image/*" required />
-            <button type="submit">Ara</button>
+            <div class="dropzone" id="dropzone">
+                <span id="dropzoneText">Drag & drop an image here or click to select</span>
+                <input type="file" name="image" accept="image/*" required id="fileInput" />
+            </div>
+            <div class="preview" id="preview" style="display: {{ 'flex' if uploaded_image else 'none' }}">
+                {% if uploaded_image %}
+                    <img id="previewImg" src="{{ url_for('static', filename='uploads/' ~ uploaded_image) }}" alt="Preview" />
+                    <span id="previewText">{{ uploaded_image }}</span>
+                {% else %}
+                    <img id="previewImg" src="#" alt="Preview" />
+                    <span id="previewText"></span>
+                {% endif %}
+            </div>
+            <button type="submit">Search</button>
         </form>
+
+        <!-- Spinner -->
+        <div id="loading"><div class="spinner"></div></div>
+
+        {% if results %}
+        <hr>
+        <h2 class="similar-title">Similar Images</h2>
+        <div class="similar-list">
+            {% for path, similarity in results %}
+            <div>
+                <img src="{{ url_for('static', filename='images/' ~ path ~ '.jpg') }}" alt="{{ path }}" />
+                <div style="color:#fff; font-size:1rem;">Similarity: {{ "%.4f"|format(similarity) }}</div>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
     </div>
+
+    <script>
+        const dropzone = document.getElementById('dropzone');
+        const fileInput = document.getElementById('fileInput');
+        const dropzoneText = document.getElementById('dropzoneText');
+        const preview = document.getElementById('preview');
+        const previewImg = document.getElementById('previewImg');
+        const previewText = document.getElementById('previewText');
+        const form = document.querySelector('form');
+        const loading = document.getElementById('loading');
+
+        dropzone.addEventListener('click', () => fileInput.click());
+        dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('dragover'); });
+        dropzone.addEventListener('dragleave', e => { e.preventDefault(); dropzone.classList.remove('dragover'); });
+        dropzone.addEventListener('drop', function(e) {
+            e.preventDefault();
+            dropzone.classList.remove('dragover');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                fileInput.files = files;
+                handleFile(files[0]);
+            }
+        });
+
+        fileInput.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            handleFile(file);
+        });
+
+        function handleFile(file) {
+            if (file) {
+                dropzoneText.textContent = file.name;
+                preview.style.display = 'flex';
+                previewText.textContent = file.name;
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    previewImg.src = e.target.result;
+                }
+                reader.readAsDataURL(file);
+            } else {
+                dropzoneText.textContent = 'Drag & drop an image here or click to select';
+                preview.style.display = 'none';
+                previewImg.src = '#';
+                previewText.textContent = '';
+            }
+        }
+
+        // Form submit olduğunda loading spinner'ı göster
+        form.addEventListener('submit', () => {
+            loading.style.display = 'flex';
+        });
+    </script>
 </body>
 </html>
