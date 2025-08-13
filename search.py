@@ -17,6 +17,8 @@ _clip_model = None
 _clip_preprocess = None
 _faiss_index = None
 _filenames = None
+_index_mtime = None
+_filenames_mtime = None
 
 # DINO model yükle
 def load_dino_model():
@@ -39,11 +41,28 @@ def load_clip_model():
     return _clip_model, _clip_preprocess
 
 def get_index_and_filenames():
-    global _faiss_index, _filenames
-    if _faiss_index is None or _filenames is None:
+    global _faiss_index, _filenames, _index_mtime, _filenames_mtime
+    try:
+        current_index_mtime = os.path.getmtime(INDEX_FILE)
+        current_filenames_mtime = os.path.getmtime(FILENAMES_FILE)
+    except Exception:
+        current_index_mtime = None
+        current_filenames_mtime = None
+
+    need_reload = (
+        _faiss_index is None
+        or _filenames is None
+        or _index_mtime != current_index_mtime
+        or _filenames_mtime != current_filenames_mtime
+    )
+
+    if need_reload:
         _faiss_index = faiss.read_index(INDEX_FILE)
         with open(FILENAMES_FILE, "r", encoding="utf-8") as f:
             _filenames = [line.strip() for line in f]
+        _index_mtime = current_index_mtime
+        _filenames_mtime = current_filenames_mtime
+
     return _faiss_index, _filenames
 
 # DINO ile vektör çıkar
@@ -75,6 +94,9 @@ def extract_clip_features(clip_model, clip_preprocess, image_path):
 
 # 🔍 Ana fonksiyon
 def search_similar_images(image_path, top_k: int = 50):
+    if not os.path.exists(image_path):
+        raise FileNotFoundError(f"Query image not found: {image_path}")
+
     dino_model = load_dino_model()
     clip_model, clip_preprocess = load_clip_model()
 

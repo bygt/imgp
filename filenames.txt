@@ -1,6 +1,6 @@
-exmp.npy
-mavitisort.npy
-Screenshot_1.npy
-Screenshot_2.npy
-Screenshot_3.npy
-yesiltisort.npy
+exmp.jpg
+mavitisort.jpg
+Screenshot_1.jpg
+Screenshot_2.jpg
+Screenshot_3.jpg
+yesiltisort.jpg

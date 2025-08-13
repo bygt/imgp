@@ -14,14 +14,8 @@ app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 @app.route("/", methods=["GET", "POST"])
 def index():
     if request.method == "POST":
-        # Önce uploads klasöründeki dosyaları temizle
-        for f in os.listdir(app.config['UPLOAD_FOLDER']):
-            file_path = os.path.join(app.config['UPLOAD_FOLDER'], f)
-            try:
-                if os.path.isfile(file_path):
-                    os.remove(file_path)
-            except Exception as e:
-                print(f"Dosya silme hatası: {e}")
+        # Klasörü garanti et
+        os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
         file = request.files.get("image")
         threshold_str = request.form.get("threshold", "0")
@@ -29,13 +23,44 @@ def index():
             threshold = max(0, min(100, int(threshold_str)))
         except Exception:
             threshold = 0
-        if file:
+        if file and file.filename:
+            # Önce önceki upload'ları temizle
+            try:
+                for f in os.listdir(app.config['UPLOAD_FOLDER']):
+                    file_path = os.path.join(app.config['UPLOAD_FOLDER'], f)
+                    if os.path.isfile(file_path):
+                        os.remove(file_path)
+            except Exception as e:
+                print(f"Dosya temizleme hatası: {e}")
+
             filename = secure_filename(file.filename)
             filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
             file.save(filepath)
 
             # top_k geniş tutulur; UI tarafında eşik filtrelemesi yapılacak
-            results = search_similar_images(filepath, top_k=200)
+            try:
+                results = search_similar_images(filepath, top_k=200)
+            except Exception as e:
+                print(f"Search error: {e}")
+                results = []
+
+            # Ensure image filenames point to actual image files (not .npy)
+            def resolve_image_filename(name: str) -> str:
+                base, ext = os.path.splitext(name)
+                image_dir = os.path.join('static', 'images')
+                preferred_exts = ['.jpg', '.jpeg', '.png']
+                # If already an image extension and exists, return as-is
+                if ext.lower() in preferred_exts and os.path.exists(os.path.join(image_dir, name)):
+                    return name
+                # Try resolve by base name
+                for e in preferred_exts:
+                    cand = base + e
+                    if os.path.exists(os.path.join(image_dir, cand)):
+                        return cand
+                # Fallback to original
+                return name
+
+            results = [(resolve_image_filename(name), score) for name, score in results]
 
             return render_template("index.html", results=results, uploaded_image=filename, threshold=threshold)
 

@@ -83,8 +83,13 @@
                             </div>
                         </div>
                     </div>
-                    {% endfor %}
+                     {% endfor %}
                 </div>
+            </section>
+            {% endif %}
+            {% if not results %}
+            <section class="results empty">
+                <div class="meta">No results yet. Upload an image to search.</div>
             </section>
             {% endif %}
         </section>
