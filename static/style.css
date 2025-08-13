@@ -1,3 +1,6 @@
+.score__bar-fill[data-width] {
+	width: attr(data-width percentage);
+}
 :root {
     --bg-0: #0f1115;
     --bg-1: #151821;

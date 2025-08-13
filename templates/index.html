@@ -35,6 +35,15 @@
                     <span id="previewText"></span>
                 </div>
 
+                <div class="field">
+                    <label for="threshold">Minimum similarity</label>
+                    <div style="display:flex;align-items:center;gap:12px">
+                        <input type="range" id="threshold" name="threshold" min="0" max="100" step="10" value="{{ threshold if threshold is defined else 0 }}" />
+                        <output id="thresholdValue">{{ threshold if threshold is defined else 0 }}%</output>
+                    </div>
+                    <small>Use the slider to filter results on the fly.</small>
+                </div>
+
                 <div class="actions">
                     <button type="submit" class="btn btn--primary">Search</button>
                 </div>
@@ -55,9 +64,9 @@
                     <div class="meta">{{ results|length }} results found</div>
                 </aside>
 
-                <div class="similar-grid">
+                <div class="similar-grid" id="resultsGrid">
                     {% for path, similarity in results %}
-                    <div class="card">
+                    <div class="card" data-sim="{{ (similarity + 1) * 50 }}">
                         <div class="card__image">
                             <img src="{{ url_for('static', filename='images/' ~ path) }}" alt="{{ path }}" />
                         </div>
@@ -69,7 +78,7 @@
                                     <span class="score__value">{{ "%.4f"|format(similarity) }}</span>
                                 </div>
                                 <div class="score__bar">
-                                    <div class="score__bar-fill" style="width: {{ (((similarity + 1) / 2) * 100)|round(0) }}%"></div>
+                                    <div class="score__bar-fill" data-width="{{ (((similarity + 1) / 2) * 100)|round(0) }}"></div>
                                 </div>
                             </div>
                         </div>
@@ -90,8 +99,25 @@
         const previewText = document.getElementById('previewText');
         const form = document.querySelector('form.upload-card');
         const loading = document.getElementById('loading');
+        const threshold = document.getElementById('threshold');
+        const thresholdValue = document.getElementById('thresholdValue');
+        const resultsGrid = document.getElementById('resultsGrid');
 
-        dropzone.addEventListener('click', () => fileInput.click());
+        // Avoid double file dialog: only trigger when clicking outside the native input
+        dropzone.addEventListener('click', (e) => {
+            if (e.target !== fileInput) {
+                // Reset to ensure selecting the same file re-triggers 'change'
+                fileInput.value = '';
+                fileInput.click();
+            }
+        });
+        fileInput.addEventListener('click', (e) => {
+            e.stopPropagation();
+        });
+
+        // Prevent the browser from navigating when dropping outside the dropzone
+        document.addEventListener('dragover', function(e) { e.preventDefault(); });
+        document.addEventListener('drop', function(e) { e.preventDefault(); });
 
         dropzone.addEventListener('dragover', function(e) {
             e.preventDefault();
@@ -113,19 +139,35 @@
             }
         });
 
-        dropzone.addEventListener('paste', function(e) {
-            const items = (e.clipboardData || window.clipboardData).items;
+        function handlePasteEvent(e) {
+            const cd = e.clipboardData || window.clipboardData;
+            if (!cd) return;
+            const items = cd.items || [];
             for (let i = 0; i < items.length; i++) {
-                if (items[i].type.indexOf('image') !== -1) {
-                    const file = items[i].getAsFile();
-                    const dt = new DataTransfer();
-                    dt.items.add(file);
-                    fileInput.files = dt.files;
-                    handleFile(file);
-                    break;
+                const item = items[i];
+                if (item && item.type && item.type.indexOf('image') !== -1) {
+                    const file = item.getAsFile();
+                    if (file) {
+                        const dt = new DataTransfer();
+                        dt.items.add(file);
+                        fileInput.files = dt.files;
+                        handleFile(file);
+                        e.preventDefault();
+                        return;
+                    }
                 }
             }
-        });
+            if (cd.files && cd.files.length > 0) {
+                const file = cd.files[0];
+                const dt = new DataTransfer();
+                dt.items.add(file);
+                fileInput.files = dt.files;
+                handleFile(file);
+                e.preventDefault();
+            }
+        }
+        dropzone.addEventListener('paste', handlePasteEvent);
+        document.addEventListener('paste', handlePasteEvent);
 
         fileInput.addEventListener('change', function(e) {
             const file = e.target.files[0];
@@ -153,6 +195,34 @@
         form.addEventListener('submit', () => {
             loading.style.display = 'flex';
         });
+
+        function applyClientFilter() {
+            if (!resultsGrid) return;
+            const minPct = parseInt(threshold.value || '0', 10);
+            const cards = resultsGrid.querySelectorAll('.card');
+            cards.forEach(card => {
+                const simPct = parseFloat(card.getAttribute('data-sim') || '0');
+                card.style.display = simPct >= minPct ? '' : 'none';
+            });
+        }
+
+        if (threshold && thresholdValue) {
+            const updateOut = () => {
+                thresholdValue.textContent = `${threshold.value}%`;
+                applyClientFilter();
+            };
+            threshold.addEventListener('input', updateOut);
+            updateOut();
+        }
+
+        // Apply score bar widths from data attribute
+        (function applyScoreBars() {
+            const bars = document.querySelectorAll('.score__bar-fill[data-width]');
+            bars.forEach(el => {
+                const w = el.getAttribute('data-width');
+                if (w != null) el.style.width = `${w}%`;
+            });
+        })();
     </script>
 </body>
 </html>

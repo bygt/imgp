@@ -1,5 +1,9 @@
 from flask import Flask, render_template, request, send_from_directory
 import os
+
+# Mitigate OpenMP runtime conflict on Windows (Torch/FAISS). Use at your own risk.
+os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
+
 from werkzeug.utils import secure_filename
 from search import search_similar_images
 
@@ -20,14 +24,20 @@ def index():
                 print(f"Dosya silme hatası: {e}")
 
         file = request.files.get("image")
+        threshold_str = request.form.get("threshold", "0")
+        try:
+            threshold = max(0, min(100, int(threshold_str)))
+        except Exception:
+            threshold = 0
         if file:
             filename = secure_filename(file.filename)
             filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
             file.save(filepath)
 
-            results = search_similar_images(filepath)
+            # top_k geniş tutulur; UI tarafında eşik filtrelemesi yapılacak
+            results = search_similar_images(filepath, top_k=200)
 
-            return render_template("index.html", results=results, uploaded_image=filename)
+            return render_template("index.html", results=results, uploaded_image=filename, threshold=threshold)
 
     return render_template("index.html")
 
@@ -38,7 +48,6 @@ def favicon():
 # Optional warmup to reduce first-request latency
 from search import load_dino_model, load_clip_model, get_index_and_filenames
 
-@app.before_first_request
 def warmup():
     try:
         load_dino_model()
@@ -48,4 +57,8 @@ def warmup():
         print(f"Warmup error: {e}")
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    # Warm once: if reloader child or when reloader is disabled
+    if os.environ.get("WERKZEUG_RUN_MAIN") == "true" or os.environ.get("WERKZEUG_RUN_MAIN") is None:
+        warmup()
+    # Disable reloader to avoid double processes and confusing reloads on actions
+    app.run(debug=True, use_reloader=False)

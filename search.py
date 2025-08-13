@@ -74,7 +74,7 @@ def extract_clip_features(clip_model, clip_preprocess, image_path):
     return vector
 
 # 🔍 Ana fonksiyon
-def search_similar_images(image_path):
+def search_similar_images(image_path, top_k: int = 50):
     dino_model = load_dino_model()
     clip_model, clip_preprocess = load_clip_model()
 
@@ -85,7 +85,7 @@ def search_similar_images(image_path):
 
     index, filenames = get_index_and_filenames()
 
-    distances, indices = index.search(np.array([query_vector]), 5)
+    distances, indices = index.search(np.array([query_vector]), top_k)
     results = [(filenames[i], float(dist)) for i, dist in zip(indices[0], distances[0])]
     return results
 
