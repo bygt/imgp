@@ -1,6 +1,6 @@
-exmp.jpg
-mavitisort.jpg
-Screenshot_1.jpg
-Screenshot_2.jpg
-Screenshot_3.jpg
-yesiltisort.jpg
+exmp
+mavitisort
+Screenshot_1
+Screenshot_2
+Screenshot_3
+yesiltisort
