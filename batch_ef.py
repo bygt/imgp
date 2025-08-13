@@ -68,8 +68,9 @@ for filename in image_files:
         dino_feat /= np.linalg.norm(dino_feat)
         clip_feat /= np.linalg.norm(clip_feat)
 
-        # Concatenate features
-        combined_feat = np.concatenate([dino_feat, clip_feat])
+        # Concatenate features and normalize
+        combined_feat = np.concatenate([dino_feat, clip_feat]).astype("float32")
+        combined_feat /= np.linalg.norm(combined_feat) + 1e-12
 
         np.save(vector_path, combined_feat)
         print(f"✓ Saved: {filename} -> {vector_path}")

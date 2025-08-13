@@ -10,7 +10,7 @@ import clip
 
 # Folder paths
 TEMP_LIB_DIR = "temp_lib"
-IMAGES_DIR = "images"
+IMAGES_DIR = "static/images"
 VECTOR_DIR = "vectors"
 
 print("Loading models...")
@@ -59,7 +59,8 @@ def extract_and_move(filename):
         dino_feat /= np.linalg.norm(dino_feat)
         clip_feat /= np.linalg.norm(clip_feat)
 
-        combined_feat = np.concatenate([dino_feat, clip_feat])
+        combined_feat = np.concatenate([dino_feat, clip_feat]).astype("float32")
+        combined_feat /= np.linalg.norm(combined_feat) + 1e-12
 
         np.save(vector_path, combined_feat)
         print(f"✓ Saved: {filename} -> {vector_path}")

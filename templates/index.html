@@ -5,86 +5,82 @@
     <title>Image Search</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link href="https://fonts.googleapis.com/css?family=Roboto:400,700&display=swap" rel="stylesheet" />
+    <link rel="icon" href="{{ url_for('static', filename='favicon.svg') }}" type="image/svg+xml">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-    <style>
-        .similar-list {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 24px;
-            justify-content: center;
-            margin-top: 20px;
-        }
-        .similar-list > div {
-            background: #23272f;
-            border-radius: 12px;
-            padding: 16px;
-            width: 220px;
-            box-shadow: 0 2px 8px rgba(72,144,255,0.10);
-            text-align: center;
-        }
-        .similar-list img {
-            width: 180px;
-            border-radius: 8px;
-            margin-bottom: 10px;
-        }
-        .similar-list div > div {
-            margin-bottom: 4px;
-        }
-
-        /* Spinner CSS */
-        #loading {
-            display: none;
-            justify-content: center;
-            margin-top: 20px;
-        }
-
-        .spinner {
-            border: 6px solid #f3f3f3;
-            border-top: 6px solid #3498db;
-            border-radius: 50%;
-            width: 40px;
-            height: 40px;
-            animation: spin 1s linear infinite;
-        }
-
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-    </style>
 </head>
 <body>
-    <div class="container">
-        <h1>Upload and Search Image</h1>
-        <form method="POST" enctype="multipart/form-data">
-            <div class="dropzone" id="dropzone" tabindex="0">
-                <span id="dropzoneText">Drag & drop an image here, click or paste from clipboard</span>
-                <input type="file" name="image" accept="image/*" required id="fileInput" />
-            </div>
-            <div class="preview" id="preview">
-                <img id="previewImg" src="#" alt="Preview" />
-                <span id="previewText"></span>
-            </div>
-            <button type="submit">Search</button>
-        </form>
+    <nav class="topbar">
+        <div class="topbar__brand brand">IMG<span>Search</span></div>
+    </nav>
 
-        <!-- Spinner -->
-        <div id="loading"><div class="spinner"></div></div>
+    <main class="page">
+        <section class="container">
+            <header class="page__header">
+                <h1 class="hero-brand brand">IMG<span>Search</span></h1>
+                <p class="subtitle">Find similar images instantly</p>
+            </header>
 
-        {% if results %}
-        <hr>
-        <h2 class="similar-title">Similar Images</h2>
-        <div class="similar-list">
-            {% for path, similarity in results %}
-            <div>
-                <img src="{{ url_for('static', filename='images/' ~ path ~ '.jpg') }}" alt="{{ path }}" />
-                <div style="color:#fff; font-size:1rem;">Similarity: {{ "%.4f"|format(similarity) }}</div>
-                <div style="color:#bfcad6; font-size:0.95rem;">{{ path }}.jpg</div>
-            </div>
-            {% endfor %}
-        </div>
-        {% endif %}
-    </div>
+            <form method="POST" enctype="multipart/form-data" class="upload-card">
+                <div class="dropzone" id="dropzone" tabindex="0">
+                    <div class="dropzone__icon" aria-hidden="true">⬆</div>
+                    <div class="dropzone__text">
+                        <span id="dropzoneText">Drag & drop an image, click or paste from clipboard</span>
+                        <small>JPG, PNG • Max 10MB</small>
+                    </div>
+                    <input type="file" name="image" accept="image/*" required id="fileInput" />
+                </div>
+
+                <div class="preview" id="preview">
+                    <img id="previewImg" src="#" alt="Preview" />
+                    <span id="previewText"></span>
+                </div>
+
+                <div class="actions">
+                    <button type="submit" class="btn btn--primary">Search</button>
+                </div>
+            </form>
+
+            <div id="loading" class="loading"><div class="spinner" aria-label="Loading"></div></div>
+
+            {% if results %}
+            <section class="results">
+                <aside class="query-panel">
+                    <h2>Uploaded image</h2>
+                    {% if uploaded_image %}
+                    <div class="query-panel__img">
+                        <img src="{{ url_for('static', filename='uploads/' ~ uploaded_image) }}" alt="Uploaded image" />
+                    </div>
+                    <div class="file-chip">{{ uploaded_image }}</div>
+                    {% endif %}
+                    <div class="meta">{{ results|length }} results found</div>
+                </aside>
+
+                <div class="similar-grid">
+                    {% for path, similarity in results %}
+                    <div class="card">
+                        <div class="card__image">
+                            <img src="{{ url_for('static', filename='images/' ~ path) }}" alt="{{ path }}" />
+                        </div>
+                        <div class="card__body">
+                            <div class="card__title">{{ path }}</div>
+                            <div class="score">
+                                <div class="score__row">
+                                    <span class="score__label">Similarity</span>
+                                    <span class="score__value">{{ "%.4f"|format(similarity) }}</span>
+                                </div>
+                                <div class="score__bar">
+                                    <div class="score__bar-fill" style="width: {{ (((similarity + 1) / 2) * 100)|round(0) }}%"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </section>
+            {% endif %}
+        </section>
+    </main>
+
     <script>
         const dropzone = document.getElementById('dropzone');
         const fileInput = document.getElementById('fileInput');
@@ -92,7 +88,7 @@
         const preview = document.getElementById('preview');
         const previewImg = document.getElementById('previewImg');
         const previewText = document.getElementById('previewText');
-        const form = document.querySelector('form');
+        const form = document.querySelector('form.upload-card');
         const loading = document.getElementById('loading');
 
         dropzone.addEventListener('click', () => fileInput.click());
@@ -147,14 +143,13 @@
                 }
                 reader.readAsDataURL(file);
             } else {
-                dropzoneText.textContent = 'Drag & drop an image here, click or paste from clipboard';
+                dropzoneText.textContent = 'Drag & drop an image, click or paste from clipboard';
                 preview.style.display = 'none';
                 previewImg.src = '#';
                 previewText.textContent = '';
             }
         }
 
-        // Form submit olduğunda loading spinner'ı göster
         form.addEventListener('submit', () => {
             loading.style.display = 'flex';
         });

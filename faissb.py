@@ -7,6 +7,16 @@ import numpy as np
 VECTOR_DIR = "vectors"
 INDEX_FILE = "faiss.index"
 FILENAMES_FILE = "filenames.txt"
+IMAGE_DIR = "static/images"
+IMAGE_EXTS = (".jpg", ".jpeg", ".png")
+
+def resolve_image_filename(base_name):
+    for ext in IMAGE_EXTS:
+        candidate = base_name + ext
+        if os.path.exists(os.path.join(IMAGE_DIR, candidate)):
+            return candidate
+    return base_name
+
 
 def load_vectors(vector_dir):
     vectors = []
@@ -15,9 +25,12 @@ def load_vectors(vector_dir):
     for filename in os.listdir(vector_dir):
         if filename.endswith(".npy"):
             path = os.path.join(vector_dir, filename)
-            vector = np.load(path)
-            vectors.append(vector.astype("float32"))
-            filenames.append(filename)
+            vector = np.load(path).astype("float32")
+            vectors.append(vector)
+            base = os.path.splitext(filename)[0]
+            filenames.append(resolve_image_filename(base))
+    if not vectors:
+        raise RuntimeError("No vectors found in 'vectors' directory.")
     
     return np.stack(vectors), filenames
 

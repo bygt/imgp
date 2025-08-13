@@ -15,6 +15,8 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 _dino_model = None
 _clip_model = None
 _clip_preprocess = None
+_faiss_index = None
+_filenames = None
 
 # DINO model yükle
 def load_dino_model():
@@ -35,6 +37,14 @@ def load_clip_model():
         _clip_model.eval()
         print("CLIP model loaded.")
     return _clip_model, _clip_preprocess
+
+def get_index_and_filenames():
+    global _faiss_index, _filenames
+    if _faiss_index is None or _filenames is None:
+        _faiss_index = faiss.read_index(INDEX_FILE)
+        with open(FILENAMES_FILE, "r", encoding="utf-8") as f:
+            _filenames = [line.strip() for line in f]
+    return _faiss_index, _filenames
 
 # DINO ile vektör çıkar
 def extract_dino_features(model, image_path):
@@ -71,10 +81,9 @@ def search_similar_images(image_path):
     dino_vec = extract_dino_features(dino_model, image_path)
     clip_vec = extract_clip_features(clip_model, clip_preprocess, image_path)
     query_vector = np.concatenate((dino_vec, clip_vec)).astype('float32')
+    query_vector /= np.linalg.norm(query_vector) + 1e-12
 
-    index = faiss.read_index(INDEX_FILE)
-    with open(FILENAMES_FILE, "r", encoding="utf-8") as f:
-        filenames = [line.strip() for line in f.readlines()]
+    index, filenames = get_index_and_filenames()
 
     distances, indices = index.search(np.array([query_vector]), 5)
     results = [(filenames[i], float(dist)) for i, dist in zip(indices[0], distances[0])]
