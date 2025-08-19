@@ -5,6 +5,8 @@ from PIL import Image
 from torchvision import transforms
 import torch
 import clip
+from background_removal import preprocess_image_for_clothing
+from config import BACKGROUND_REMOVAL, CLIP_PROMPTING, MODEL_CONFIG
 
 INDEX_FILE = "faiss.index"
 FILENAMES_FILE = "filenames.txt"
@@ -24,20 +26,28 @@ _filenames_mtime = None
 def load_dino_model():
     global _dino_model
     if _dino_model is None:
-        print("Loading DINOv2 model...")
-        _dino_model = torch.hub.load('facebookresearch/dinov2', 'dinov2_vitl14').to(device)
-        _dino_model.eval()
-        print("DINOv2 model loaded.")
+        try:
+            print("Loading DINOv2 model...")
+            _dino_model = torch.hub.load('facebookresearch/dinov2', 'dinov2_vitl14').to(device)
+            _dino_model.eval()
+            print("DINOv2 model loaded.")
+        except Exception as e:
+            print(f"DINOv2 loading failed: {e}")
+            raise
     return _dino_model
 
 # CLIP model yükle
 def load_clip_model():
     global _clip_model, _clip_preprocess
     if _clip_model is None or _clip_preprocess is None:
-        print("Loading CLIP model...")
-        _clip_model, _clip_preprocess = clip.load("ViT-L/14", device=device)
-        _clip_model.eval()
-        print("CLIP model loaded.")
+        try:
+            print("Loading CLIP model...")
+            _clip_model, _clip_preprocess = clip.load("ViT-L/14", device=device)
+            _clip_model.eval()
+            print("CLIP model loaded.")
+        except Exception as e:
+            print(f"CLIP loading failed: {e}")
+            raise
     return _clip_model, _clip_preprocess
 
 def get_index_and_filenames():
@@ -66,7 +76,7 @@ def get_index_and_filenames():
     return _faiss_index, _filenames
 
 # DINO ile vektör çıkar
-def extract_dino_features(model, image_path):
+def extract_dino_features(model, image_path, use_bg_removal=True):
     transform = transforms.Compose([
         transforms.Resize(518),
         transforms.CenterCrop(518),
@@ -74,7 +84,13 @@ def extract_dino_features(model, image_path):
         transforms.Normalize(mean=[0.485, 0.456, 0.406],
                              std=[0.229, 0.224, 0.225])
     ])
-    image = Image.open(image_path).convert("RGB")
+    
+    # Arka plan kaldırma ile önişleme
+    if use_bg_removal:
+        image = preprocess_image_for_clothing(image_path, use_background_removal=True)
+    else:
+        image = Image.open(image_path).convert("RGB")
+    
     input_tensor = transform(image).unsqueeze(0).to(device)
     with torch.no_grad():
         features = model(input_tensor)
@@ -82,13 +98,35 @@ def extract_dino_features(model, image_path):
     vector /= np.linalg.norm(vector)
     return vector
 
-# CLIP ile vektör çıkar
-def extract_clip_features(clip_model, clip_preprocess, image_path):
-    image = Image.open(image_path).convert("RGB")
+# CLIP ile vektör çıkar (kıyafet odaklı)
+def extract_clip_features(clip_model, clip_preprocess, image_path, use_bg_removal=True):
+    # Arka plan kaldırma ile önişleme
+    if use_bg_removal:
+        image = preprocess_image_for_clothing(image_path, use_background_removal=True)
+    else:
+        image = Image.open(image_path).convert("RGB")
+    
     clip_input = clip_preprocess(image).unsqueeze(0).to(device)
+    
+    # Kıyafet odaklı text promptları
+    text_prompts = CLIP_PROMPTING['clothing_prompts']
+    
     with torch.no_grad():
-        features = clip_model.encode_image(clip_input)
-    vector = features.squeeze(0).cpu().numpy().astype('float32')
+        # Görsel özellikler
+        image_features = clip_model.encode_image(clip_input)
+        
+        # Text özellikler
+        text_tokens = clip.tokenize(text_prompts).to(device)
+        text_features = clip_model.encode_text(text_tokens)
+        
+        # Text özelliklerinin ortalamasını al
+        text_features_mean = text_features.mean(dim=0, keepdim=True)
+        alpha = CLIP_PROMPTING['image_weight']  # Görsel özellik ağırlığı
+        beta = CLIP_PROMPTING['text_weight']    # Text özellik ağırlığı
+        
+        combined_features = alpha * image_features + beta * text_features_mean
+        
+    vector = combined_features.squeeze(0).cpu().numpy().astype('float32')
     vector /= np.linalg.norm(vector)
     return vector
 
@@ -97,19 +135,30 @@ def search_similar_images(image_path, top_k: int = 50):
     if not os.path.exists(image_path):
         raise FileNotFoundError(f"Query image not found: {image_path}")
 
-    dino_model = load_dino_model()
-    clip_model, clip_preprocess = load_clip_model()
+    try:
+        dino_model = load_dino_model()
+        clip_model, clip_preprocess = load_clip_model()
 
-    dino_vec = extract_dino_features(dino_model, image_path)
-    clip_vec = extract_clip_features(clip_model, clip_preprocess, image_path)
-    query_vector = np.concatenate((dino_vec, clip_vec)).astype('float32')
-    query_vector /= np.linalg.norm(query_vector) + 1e-12
+        # Arama sırasında query fotoğun arka planını kaldır
+        dino_vec = extract_dino_features(dino_model, image_path, use_bg_removal=True)
+        clip_vec = extract_clip_features(clip_model, clip_preprocess, image_path, use_bg_removal=True)
+        query_vector = np.concatenate((dino_vec, clip_vec)).astype('float32')
+        query_vector /= np.linalg.norm(query_vector) + 1e-12
 
-    index, filenames = get_index_and_filenames()
+        index, filenames = get_index_and_filenames()
 
-    distances, indices = index.search(np.array([query_vector]), top_k)
-    results = [(filenames[i], float(dist)) for i, dist in zip(indices[0], distances[0])]
-    return results
+        print(f"Query vektör boyutu: {len(query_vector)}")
+        print(f"FAISS index boyutu: {index.d}")
+        
+        if len(query_vector) != index.d:
+            raise ValueError(f"Vektör boyutu uyumsuzluğu: Query={len(query_vector)}, Index={index.d}")
+
+        distances, indices = index.search(np.array([query_vector]), top_k)
+        results = [(filenames[i], float(dist)) for i, dist in zip(indices[0], distances[0])]
+        return results
+    except Exception as e:
+        print(f"Search function error: {type(e).__name__}: {str(e)}")
+        raise
 
 # CLI
 def main():

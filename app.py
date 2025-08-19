@@ -6,6 +6,7 @@ os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
 
 from werkzeug.utils import secure_filename
 from search import search_similar_images
+from config import BACKGROUND_REMOVAL, CLIP_PROMPTING
 
 app = Flask(__name__)
 UPLOAD_FOLDER = 'static/uploads'
@@ -41,7 +42,9 @@ def index():
             try:
                 results = search_similar_images(filepath, top_k=200)
             except Exception as e:
-                print(f"Search error: {e}")
+                print(f"Search error: {type(e).__name__}: {str(e)}")
+                import traceback
+                traceback.print_exc()
                 results = []
 
             # Ensure image filenames point to actual image files (not .npy)
