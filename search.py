@@ -5,7 +5,7 @@ from PIL import Image
 from torchvision import transforms
 import torch
 import clip
-from background_removal import preprocess_image_for_clothing
+
 from config import BACKGROUND_REMOVAL, MODEL_CONFIG
 
 INDEX_FILE = "faiss.index"
@@ -85,11 +85,8 @@ def extract_dino_features(model, image_path, use_bg_removal=True):
                              std=[0.229, 0.224, 0.225])
     ])
     
-    # Arka plan kaldırma ile önişleme
-    if use_bg_removal:
-        image = preprocess_image_for_clothing(image_path, use_background_removal=True)
-    else:
-        image = Image.open(image_path).convert("RGB")
+    # Normal görsel işleme (background removal yok)
+    image = Image.open(image_path).convert("RGB")
     
     input_tensor = transform(image).unsqueeze(0).to(device)
     with torch.no_grad():
@@ -144,12 +141,9 @@ def create_sliding_windows(image_path, grid_size=3, overlap=0.3):
         return [], []
 
 # CLIP ile vektör çıkar (sadece görsel)
-def extract_clip_features(clip_model, clip_preprocess, image_path, use_bg_removal=True):
-    # Arka plan kaldırma ile önişleme
-    if use_bg_removal:
-        image = preprocess_image_for_clothing(image_path, use_background_removal=True)
-    else:
-        image = Image.open(image_path).convert("RGB")
+def extract_clip_features(clip_model, clip_preprocess, image_path, use_bg_removal=False):
+    # Normal görsel işleme (background removal yok)
+    image = Image.open(image_path).convert("RGB")
     
     clip_input = clip_preprocess(image).unsqueeze(0).to(device)
     
