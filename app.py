@@ -20,6 +20,7 @@ def index():
 
         file = request.files.get("image")
         threshold_str = request.form.get("threshold", "0")
+        sliding_window_enabled = request.form.get("sliding_window_enabled") == "true"
         try:
             threshold = max(0, min(100, int(threshold_str)))
         except Exception:
@@ -40,7 +41,7 @@ def index():
 
             # top_k geniş tutulur; UI tarafında eşik filtrelemesi yapılacak
             try:
-                results = search_similar_images(filepath, top_k=200)
+                results = search_similar_images(filepath, top_k=200, use_sliding_window=sliding_window_enabled)
             except Exception as e:
                 print(f"Search error: {type(e).__name__}: {str(e)}")
                 import traceback

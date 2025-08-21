@@ -6,7 +6,7 @@ from torchvision import transforms
 import torch
 import clip
 from background_removal import preprocess_image_for_clothing
-from config import BACKGROUND_REMOVAL, CLIP_PROMPTING, MODEL_CONFIG
+from config import BACKGROUND_REMOVAL, MODEL_CONFIG
 
 INDEX_FILE = "faiss.index"
 FILENAMES_FILE = "filenames.txt"
@@ -98,7 +98,52 @@ def extract_dino_features(model, image_path, use_bg_removal=True):
     vector /= np.linalg.norm(vector)
     return vector
 
-# CLIP ile vektör çıkar (kıyafet odaklı)
+# Sliding window ile görseli parçalara böl
+def create_sliding_windows(image_path, grid_size=3, overlap=0.3):
+    """
+    Görseli grid_size x grid_size parçaya böl
+    overlap: Parçalar arası örtüşme oranı (0.3 = %30)
+    """
+    try:
+        image = Image.open(image_path).convert("RGB")
+        width, height = image.size
+        
+        # Parça boyutlarını hesapla
+        window_width = int(width / grid_size)
+        window_height = int(height / grid_size)
+        
+        # Örtüşme miktarını hesapla
+        overlap_x = int(window_width * overlap)
+        overlap_y = int(window_height * overlap)
+        
+        windows = []
+        positions = []
+        
+        for row in range(grid_size):
+            for col in range(grid_size):
+                # Parça pozisyonunu hesapla
+                x = col * (window_width - overlap_x)
+                y = row * (window_height - overlap_y)
+                
+                # Görsel sınırlarını kontrol et
+                x = max(0, min(x, width - window_width))
+                y = max(0, min(y, height - window_height))
+                
+                # Parçayı kes
+                window = image.crop((x, y, x + window_width, y + window_height))
+                
+                # Parçayı yeniden boyutlandır (CLIP için)
+                window = window.resize((224, 224), Image.Resampling.LANCZOS)
+                
+                windows.append(window)
+                positions.append((x, y, x + window_width, y + window_height))
+        
+        return windows, positions
+    except Exception as e:
+        print(f"Sliding window error: {e}")
+        return [], []
+
+# CLIP ile vektör çıkar (sadece görsel)
 def extract_clip_features(clip_model, clip_preprocess, image_path, use_bg_removal=True):
     # Arka plan kaldırma ile önişleme
     if use_bg_removal:
@@ -108,30 +153,56 @@ def extract_clip_features(clip_model, clip_preprocess, image_path, use_bg_remova
     
     clip_input = clip_preprocess(image).unsqueeze(0).to(device)
     
-    # Kıyafet odaklı text promptları
-    text_prompts = CLIP_PROMPTING['clothing_prompts']
-    
     with torch.no_grad():
-        # Görsel özellikler
+        # Sadece görsel özellikler
         image_features = clip_model.encode_image(clip_input)
+        vector = image_features.squeeze(0).cpu().numpy().astype('float32')
+        vector /= np.linalg.norm(vector)
+        return vector
+
+# Sliding window ile CLIP vektör çıkar
+def extract_clip_features_sliding_window(clip_model, clip_preprocess, image_path, grid_size=3):
+    """
+    Görseli parçalara bölerek her parça için CLIP vektörü çıkar
+    En yüksek similarity'yi döndür
+    """
+    try:
+        windows, positions = create_sliding_windows(image_path, grid_size=grid_size)
+        if not windows:
+            # Fallback: normal CLIP
+            return extract_clip_features(clip_model, clip_preprocess, image_path)
         
-        # Text özellikler
-        text_tokens = clip.tokenize(text_prompts).to(device)
-        text_features = clip_model.encode_text(text_tokens)
+        best_vector = None
+        best_score = -1
         
-        # Text özelliklerinin ortalamasını al
-        text_features_mean = text_features.mean(dim=0, keepdim=True)
-        alpha = CLIP_PROMPTING['image_weight']  # Görsel özellik ağırlığı
-        beta = CLIP_PROMPTING['text_weight']    # Text özellik ağırlığı
+        # Her parça için CLIP vektörü çıkar
+        for i, window in enumerate(windows):
+            # PIL Image'i tensor'a çevir
+            clip_input = clip_preprocess(window).unsqueeze(0).to(device)
+            
+            with torch.no_grad():
+                image_features = clip_model.encode_image(clip_input)
+                vector = image_features.squeeze(0).cpu().numpy().astype('float32')
+                vector /= np.linalg.norm(vector)
+                
+                # Bu parça için similarity hesapla (basit bir metrik)
+                if best_vector is not None:
+                    similarity = np.dot(vector, best_vector)
+                    if similarity > best_score:
+                        best_score = similarity
+                        best_vector = vector
+                else:
+                    best_vector = vector
+                    best_score = 0
         
-        combined_features = alpha * image_features + beta * text_features_mean
-        
-    vector = combined_features.squeeze(0).cpu().numpy().astype('float32')
-    vector /= np.linalg.norm(vector)
-    return vector
+        return best_vector
+    except Exception as e:
+        print(f"Sliding window CLIP error: {e}")
+        # Fallback: normal CLIP
+        return extract_clip_features(clip_model, clip_preprocess, image_path)
 
 # 🔍 Ana fonksiyon
-def search_similar_images(image_path, top_k: int = 50):
+def search_similar_images(image_path, top_k: int = 50, use_sliding_window: bool = False):
     if not os.path.exists(image_path):
         raise FileNotFoundError(f"Query image not found: {image_path}")
 
@@ -141,7 +212,14 @@ def search_similar_images(image_path, top_k: int = 50):
 
         # Arama sırasında query fotoğun arka planını kaldır
         dino_vec = extract_dino_features(dino_model, image_path, use_bg_removal=True)
-        clip_vec = extract_clip_features(clip_model, clip_preprocess, image_path, use_bg_removal=True)
+        
+        # Sliding window kullanılıyorsa CLIP için sliding window, yoksa normal
+        if use_sliding_window:
+            print("🔍 Using sliding window search for better cropped image matching...")
+            clip_vec = extract_clip_features_sliding_window(clip_model, clip_preprocess, image_path, grid_size=3)
+        else:
+            clip_vec = extract_clip_features(clip_model, clip_preprocess, image_path, use_bg_removal=True)
+        
         query_vector = np.concatenate((dino_vec, clip_vec)).astype('float32')
         query_vector /= np.linalg.norm(query_vector) + 1e-12
 
@@ -174,7 +252,7 @@ def main():
         print("Multiple images found in uploads folder, using the first one:", files[0])
 
     query_image_path = os.path.join(UPLOADS_DIR, files[0])
-    results = search_similar_images(query_image_path)
+    results = search_similar_images(query_image_path, use_sliding_window=True)
 
     print("\n🔍 Top similar images:")
     for rank, (filename, sim) in enumerate(results, start=1):
