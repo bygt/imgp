@@ -10,13 +10,17 @@
 </head>
 <body>
     <nav class="topbar">
-        <div class="topbar__brand brand">IMG<span>Search</span></div>
+        <div class="topbar__brand brand">
+            <img src="{{ url_for('static', filename='logo.svg') }}" alt="Logo" style="height: 32px; width: auto;">
+        </div>
     </nav>
 
     <main class="page">
         <section class="container">
             <header class="page__header">
-                <h1 class="hero-brand brand">IMG<span>Search</span></h1>
+                <h1 class="hero-brand brand">
+                    <img src="{{ url_for('static', filename='logo.svg') }}" alt="Logo" style="height: 48px; width: auto;">
+                </h1>
                 <p class="subtitle">Find similar images instantly</p>
             </header>
 

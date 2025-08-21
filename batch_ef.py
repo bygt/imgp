@@ -8,8 +8,6 @@ from PIL import Image
 from torchvision import transforms
 import numpy as np
 import os
-import multiprocessing as mp
-from functools import partial
 import time
 
 # Load CLIP
@@ -25,10 +23,10 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 
 # Load DINOv2 - force offline mode
 try:
-    dino_model = torch.hub.load('facebookresearch/dinov2', 'dinov2_vitl14', source='local').to(device)
+    dino_model = torch.hub.load('facebookresearch/dinov2', 'dinov2_vitl14', source='local', verbose=False).to(device)
 except:
     # Try cached version
-    dino_model = torch.hub.load('facebookresearch/dinov2', 'dinov2_vitl14', force_reload=False).to(device)
+    dino_model = torch.hub.load('facebookresearch/dinov2', 'dinov2_vitl14', force_reload=False, verbose=False).to(device)
 dino_model.eval()
 
 # Load CLIP
@@ -53,7 +51,10 @@ print(f"{len(image_files)} images found.\n")
 
 def process_single_image(args):
     """Tek bir görseli işle"""
-    filename, image_dir, vector_dir, dino_model, clip_model, clip_preprocess, dino_transform = args
+    filename, image_dir, vector_dir = args
+    
+    # Global modelleri kullan
+    global dino_model, clip_model, clip_preprocess, dino_transform
     
     image_path = os.path.join(image_dir, filename)
     vector_path = os.path.join(vector_dir, os.path.splitext(filename)[0] + ".npy")
@@ -115,30 +116,24 @@ def process_single_image(args):
     except Exception as e:
         return f"Error ({filename}): {e}"
 
-# Multiprocessing ile işle
-def process_images_parallel(image_files, image_dir, vector_dir, dino_model, clip_model, clip_preprocess, dino_transform):
-    """Görselleri paralel işle"""
-    # CPU core sayısını al
-    num_cores = min(mp.cpu_count(), 8)  # Maksimum 8 core kullan
-    print(f"Using {num_cores} CPU cores for parallel processing...")
+# Sıralı işle
+def process_images_sequential(image_files, image_dir, vector_dir):
+    """Görselleri sıralı işle"""
+    print("Processing images sequentially...")
     
-    # Argümanları hazırla
-    args_list = [(filename, image_dir, vector_dir, dino_model, clip_model, clip_preprocess, dino_transform) 
-                 for filename in image_files]
-    
-    # Paralel işle
     start_time = time.time()
-    with mp.Pool(processes=num_cores) as pool:
-        results = pool.map(process_single_image, args_list)
+    results = []
     
-    # Sonuçları yazdır
-    for result in results:
+    for filename in image_files:
+        result = process_single_image((filename, image_dir, vector_dir))
+        results.append(result)
         print(result)
     
     end_time = time.time()
     print(f"\n⏱️ Total processing time: {end_time - start_time:.2f} seconds")
     print(f"🚀 Speed: {len(image_files) / (end_time - start_time):.2f} images/second")
 
-# Multiprocessing ile paralel işle
-print("🚀 Starting parallel processing...")
-process_images_parallel(image_files, image_dir, vector_dir, dino_model, clip_model, clip_preprocess, dino_transform)
+# Sıralı işle
+if __name__ == '__main__':
+    print("🚀 Starting sequential processing...")
+    process_images_sequential(image_files, image_dir, vector_dir)
