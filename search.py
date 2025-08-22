@@ -85,7 +85,6 @@ def extract_dino_features(model, image_path, use_bg_removal=True):
                              std=[0.229, 0.224, 0.225])
     ])
     
-    # Normal görsel işleme (background removal yok)
     image = Image.open(image_path).convert("RGB")
     
     input_tensor = transform(image).unsqueeze(0).to(device)
@@ -95,7 +94,6 @@ def extract_dino_features(model, image_path, use_bg_removal=True):
     vector /= np.linalg.norm(vector)
     return vector
 
-# Sliding window ile görseli parçalara böl
 def create_sliding_windows(image_path, grid_size=3, overlap=0.3):
     """
     Görseli grid_size x grid_size parçaya böl
