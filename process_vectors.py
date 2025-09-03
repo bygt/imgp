@@ -9,7 +9,6 @@ import numpy as np
 import torch
 import time
 from batch_ef import dino_model, clip_model, clip_preprocess, dino_transform
-from background_removal import preprocess_image_for_clothing
 import shutil
 
 # Klasörler
@@ -67,8 +66,9 @@ def extract_vectors(image_path):
     try:
         device = "cuda" if torch.cuda.is_available() else "cpu"
         
-        # Görseli yükle ve preprocess
-        processed_image = preprocess_image_for_clothing(image_path, use_background_removal=False)
+        # Görseli yükle
+        from PIL import Image
+        processed_image = Image.open(image_path)
         
         # DINO vektörü
         dino_input = dino_transform(processed_image).unsqueeze(0).to(device)
@@ -99,19 +99,17 @@ def save_vectors(dino_feat, clip_feat, combined_feat, filename):
     """Vektörleri dosyaya kaydet"""
     try:
         base_name = os.path.splitext(filename)[0]
-        combined_path = os.path.join(VECTORS_DIR, f"{base_name}_combined.npy")
+        combined_path = os.path.join(VECTORS_DIR, f"{base_name}.npy")
         
         # Eğer dosya zaten varsa atla
         if os.path.exists(combined_path):
             print(f"✅ Bulundu ve atlandı: {filename}")
             return True
         
-        # Vektörleri kaydet
-        np.save(os.path.join(VECTORS_DIR, f"{base_name}_dino.npy"), dino_feat)
-        np.save(os.path.join(VECTORS_DIR, f"{base_name}_clip.npy"), clip_feat)
+        # Sadece combined vector'ı kaydet
         np.save(combined_path, combined_feat)
         
-        print(f"✅ Oluşturuldu: {filename}")
+        print(f"✅ {filename}")
         return True
     except Exception as e:
         print(f"❌ Vektör kaydetme hatası {filename}: {e}")
@@ -121,8 +119,14 @@ def clean_temp_dir():
     """Temp klasörünü temizle"""
     try:
         if os.path.exists(TEMP_DIR):
-            shutil.rmtree(TEMP_DIR)
-            os.makedirs(TEMP_DIR, exist_ok=True)
+            # Dosyaları tek tek sil
+            for filename in os.listdir(TEMP_DIR):
+                file_path = os.path.join(TEMP_DIR, filename)
+                try:
+                    if os.path.isfile(file_path):
+                        os.remove(file_path)
+                except Exception as e:
+                    print(f"❌ Dosya silme hatası {filename}: {e}")
             print(f"🧹 {TEMP_DIR} temizlendi")
     except Exception as e:
         print(f"❌ Temizleme hatası: {e}")
@@ -142,6 +146,15 @@ def process_batch(batch_data, batch_num, total_batches):
             # URL'den filename çıkar
             filename = image_url.split('/')[-1].split('?')[0]  # ?v=51526.426 kısmını çıkar
             
+            # ÖNCE vektör var mı kontrol et
+            base_name = os.path.splitext(filename)[0]
+            combined_path = os.path.join(VECTORS_DIR, f"{base_name}.npy")
+            
+            if os.path.exists(combined_path):
+                print(f"✅ Bulundu ve atlandı: {filename}")
+                success_count += 1
+                continue
+            
             # Görseli indir
             image_path = download_image(image_url, filename)
             if not image_path:
@@ -160,12 +173,6 @@ def process_batch(batch_data, batch_num, total_batches):
                 success_count += 1
             else:
                 error_count += 1
-            
-            # Geçici dosyayı sil
-            try:
-                os.remove(image_path)
-            except Exception:
-                pass
                 
         except Exception as e:
             print(f"❌ Batch işleme hatası: {e}")
@@ -180,8 +187,6 @@ def process_batch(batch_data, batch_num, total_batches):
 def main():
     """Ana işlem fonksiyonu"""
     print("🚀 Batch Vector Processing Başlıyor...")
-    print(f"📊 Batch boyutu: {BATCH_SIZE}")
-    print(f"📁 Temp klasör: {TEMP_DIR}")
     print(f"📁 Vektör klasör: {VECTORS_DIR}")
     
     # Klasörleri oluştur
@@ -225,7 +230,10 @@ def main():
     print(f"✅ Başarılı: {total_success}")
     print(f"❌ Hata: {total_errors}")
     print(f"⏱️ Toplam süre: {total_time:.2f} saniye")
-    print(f"🚀 Hız: {total_success / total_time:.2f} görsel/saniye")
+    if total_time > 0:
+        print(f"🚀 Hız: {total_success / total_time:.2f} görsel/saniye")
+    else:
+        print("🚀 Hız: Hesaplanamadı")
     
     # Temp klasörünü temizle
     clean_temp_dir()

@@ -12,7 +12,6 @@ import time
 
 # Load CLIP
 import clip
-from background_removal import preprocess_image_for_clothing
 
 # Folder paths
 image_dir = "static/images"
@@ -63,8 +62,8 @@ def process_single_image(args):
         return f"Skipped (already exists): {filename}"
     
     try:
-        # Load image without background removal for vector creation
-        processed_image = preprocess_image_for_clothing(image_path, use_background_removal=False)
+        # Load image
+        processed_image = Image.open(image_path)
         
         # Load image for DINO
         dino_input = dino_transform(processed_image).unsqueeze(0).to(device)

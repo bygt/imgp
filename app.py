@@ -6,7 +6,6 @@ import numpy as np
 import torch
 from PIL import Image
 from batch_ef import dino_model, clip_model, clip_preprocess, dino_transform
-from background_removal import preprocess_image_for_clothing
 
 # Mitigate OpenMP runtime conflict on Windows (Torch/FAISS). Use at your own risk.
 os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
@@ -50,8 +49,8 @@ def extract_vectors_from_image(image_path):
     try:
         device = "cuda" if torch.cuda.is_available() else "cpu"
         
-        # Görseli yükle ve preprocess
-        processed_image = preprocess_image_for_clothing(image_path, use_background_removal=False)
+        # Görseli yükle
+        processed_image = Image.open(image_path)
         
         # DINO vektörü
         dino_input = dino_transform(processed_image).unsqueeze(0).to(device)
