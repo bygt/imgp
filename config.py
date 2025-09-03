@@ -1,5 +1,16 @@
 # config.py
 # Kıyafet odaklı görsel arama konfigürasyonu
+import os
+
+# MSSQL Veritabanı ayarları
+DATABASE_CONFIG = {
+    'server': os.getenv('DB_SERVER', 'localhost'),
+    'database': os.getenv('DB_NAME', 'imgp_db'),
+    'username': os.getenv('DB_USERNAME', 'your_username'),
+    'password': os.getenv('DB_PASSWORD', 'your_password'),
+    'port': int(os.getenv('DB_PORT', '1433')),
+    'timeout': int(os.getenv('DB_TIMEOUT', '30'))
+}
 
 # Arka plan kaldırma ayarları
 BACKGROUND_REMOVAL = {

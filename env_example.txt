@@ -1,0 +1,17 @@
+# MSSQL connection
+# Database info
+DB_SERVER=your_db_server
+DB_NAME=your_db_name
+DB_PORT=your_db_port
+
+# Kimlik Doğrulama
+DB_USERNAME=uni_developer
+DB_PASSWORD=your_password_here
+
+# other
+DB_TIMEOUT=30
+
+# app settings
+FLASK_ENV=development
+FLASK_DEBUG=true
+SECRET_KEY=your-secret-key-here

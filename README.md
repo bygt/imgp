@@ -1,10 +1,11 @@
-# IMGSearch — Lightning‑fast Visual Similarity Search (DINOv2 + CLIP + FAISS)
+# IMGSearch — Lightning‑fast Visual Similarity Search (DINOv2 + CLIP + FAISS + MSSQL)
 
-Find images that look alike in milliseconds. Upload an image, and get the most similar items from your catalog via a sleek web UI powered by Flask.
+Find images that look alike in milliseconds. Upload an image, and get the most similar items from your catalog via a sleek web UI powered by Flask and MSSQL database.
 
 ## Features
 - DINOv2 + CLIP image embeddings combined and normalized for robust similarity
 - FAISS index for scalable, fast nearest‑neighbor search
+- MSSQL database integration for persistent storage and search history
 - Clean UI with drag‑and‑drop, global paste (Ctrl+V), live similarity threshold slider
 - Windows‑friendly setup and scripts to build vectors and index
 - Git‑safe: `static/images` folder is kept, contents are ignored by git
@@ -16,8 +17,25 @@ Find images that look alike in milliseconds. Upload an image, and get the most s
 4. Results are rendered instantly; the slider filters results client‑side without extra requests.
 
 ## Getting started
-- Requirements: Python 3.10+, a modern CPU (GPU optional), internet (to download models on first run)
+- Requirements: Python 3.10+, a modern CPU (GPU optional), internet (to download models on first run), MSSQL Server
 
+### MSSQL Database Setup
+1. **Install SQL Server**: Download and install SQL Server (Express edition is free)
+2. **Create Database**: Run the `create_tables.sql` script in SQL Server Management Studio
+3. **Configure Connection**: Set environment variables or update `config.py`
+4. **Environment File**: Copy `env_example.txt` to `.env` and fill in your database details
+
+```bash
+# Environment variables (recommended)
+DB_SERVER=your_server_name
+DB_NAME=imgp_db
+DB_USERNAME=your_username
+DB_PASSWORD=your_password
+DB_PORT=1433
+DB_TRUSTED_CONNECTION=false
+```
+
+### Application Setup
 ```bash
 # 1) Create and activate a virtual environment (Windows PowerShell)
 python -m venv venv
@@ -26,16 +44,19 @@ python -m venv venv
 # 2) Install deps
 pip install -r requirements.txt
 
-# 3) Put catalog images here (git-ignored, folder kept)
+# 3) Test database connection
+python test_database.py
+
+# 4) Put catalog images here (git-ignored, folder kept)
 #    static/images/
 
-# 4) Extract embeddings for all images
+# 5) Extract embeddings for all images
 python batch_ef.py
 
-# 5) Build FAISS index and filenames mapping
+# 6) Build FAISS index and filenames mapping
 python faissb.py
 
-# 6) Run the web app
+# 7) Run the web app
 python app.py
 ```
 Then open `http://127.0.0.1:5000/`.
@@ -47,7 +68,12 @@ Then open `http://127.0.0.1:5000/`.
 ## Project structure
 ```
 app.py                 # Flask app
-search.py              # Model loading, feature extraction, FAISS search
+search.py              # Model loading, feature extraction, FAISS search + DB integration
+database.py            # MSSQL database connection and operations
+config.py              # Configuration including database settings
+create_tables.sql      # SQL script to create database tables
+test_database.py       # Database connection test script
+env_example.txt        # Example environment variables file
 batch_ef.py            # Bulk embedding extraction for dataset (static/images -> vectors)
 single_ef.py           # Embedding extraction for one-off files (temp_lib -> static/images)
 faissb.py              # Build FAISS index + filenames.txt (with image extensions)

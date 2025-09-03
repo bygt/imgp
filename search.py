@@ -5,9 +5,16 @@ from PIL import Image
 from torchvision import transforms
 import torch
 import clip
+import json
+import time
 
 from config import BACKGROUND_REMOVAL, MODEL_CONFIG
+from database import get_db_manager
 
+# Veritabanı manager'ı
+db_manager = get_db_manager()
+
+# Eski dosya tabanlı sistem için sabitler (geriye uyumluluk)
 INDEX_FILE = "faiss.index"
 FILENAMES_FILE = "filenames.txt"
 UPLOADS_DIR = "static/uploads"
@@ -50,30 +57,59 @@ def load_clip_model():
             raise
     return _clip_model, _clip_preprocess
 
-def get_index_and_filenames():
-    global _faiss_index, _filenames, _index_mtime, _filenames_mtime
+def get_database_vectors():
+    """Veritabanından görsel vektörlerini al ve FAISS index formatına dönüştür"""
     try:
-        current_index_mtime = os.path.getmtime(INDEX_FILE)
-        current_filenames_mtime = os.path.getmtime(FILENAMES_FILE)
-    except Exception:
-        current_index_mtime = None
-        current_filenames_mtime = None
+        # Veritabanından vektörleri al
+        db_results = db_manager.get_image_vectors()
+        
+        if not db_results:
+            print("Veritabanında görsel vektörü bulunamadı!")
+            return None, []
+        
+        # Vektörleri numpy array'lere dönüştür
+        vectors = []
+        filenames = []
+        
+        for result in db_results:
+            try:
+                # Binary vektörleri numpy array'e dönüştür
+                dino_vec = np.frombuffer(result['dino_vector'], dtype=np.float32)
+                clip_vec = np.frombuffer(result['clip_vector'], dtype=np.float32)
+                
+                # Birleştirilmiş vektörü oluştur
+                combined_vec = np.concatenate((dino_vec, clip_vec)).astype('float32')
+                combined_vec /= np.linalg.norm(combined_vec) + 1e-12
+                
+                vectors.append(combined_vec)
+                filenames.append(result['image_path'])
+                
+            except Exception as e:
+                print(f"Vektör dönüştürme hatası: {e}")
+                continue
+        
+        if not vectors:
+            print("Hiçbir geçerli vektör bulunamadı!")
+            return None, []
+        
+        # FAISS index oluştur
+        vectors_array = np.array(vectors, dtype=np.float32)
+        dimension = vectors_array.shape[1]
+        
+        # FAISS index oluştur (L2 distance için)
+        faiss_index = faiss.IndexFlatL2(dimension)
+        faiss_index.add(vectors_array)
+        
+        print(f"Veritabanından {len(vectors)} vektör yüklendi. Boyut: {dimension}")
+        return faiss_index, filenames
+        
+    except Exception as e:
+        print(f"Veritabanı vektör yükleme hatası: {e}")
+        return None, []
 
-    need_reload = (
-        _faiss_index is None
-        or _filenames is None
-        or _index_mtime != current_index_mtime
-        or _filenames_mtime != current_filenames_mtime
-    )
-
-    if need_reload:
-        _faiss_index = faiss.read_index(INDEX_FILE)
-        with open(FILENAMES_FILE, "r", encoding="utf-8") as f:
-            _filenames = [line.strip() for line in f]
-        _index_mtime = current_index_mtime
-        _filenames_mtime = current_filenames_mtime
-
-    return _faiss_index, _filenames
+def get_index_and_filenames():
+    """Geriye uyumluluk için eski fonksiyon - artık veritabanı kullanıyor"""
+    return get_database_vectors()
 
 # DINO ile vektör çıkar
 def extract_dino_features(model, image_path, use_bg_removal=True):
@@ -198,6 +234,8 @@ def search_similar_images(image_path, top_k: int = 50, use_sliding_window: bool 
     if not os.path.exists(image_path):
         raise FileNotFoundError(f"Query image not found: {image_path}")
 
+    start_time = time.time()
+    
     try:
         dino_model = load_dino_model()
         clip_model, clip_preprocess = load_clip_model()
@@ -215,20 +253,65 @@ def search_similar_images(image_path, top_k: int = 50, use_sliding_window: bool 
         query_vector = np.concatenate((dino_vec, clip_vec)).astype('float32')
         query_vector /= np.linalg.norm(query_vector) + 1e-12
 
-        index, filenames = get_index_and_filenames()
+        # Veritabanından vektörleri al
+        index, filenames = get_database_vectors()
+        
+        if index is None:
+            raise ValueError("Veritabanından vektör yüklenemedi!")
 
         print(f"Query vektör boyutu: {len(query_vector)}")
         print(f"FAISS index boyutu: {index.d}")
+        print(f"Veritabanından {len(filenames)} görsel yüklendi")
         
         if len(query_vector) != index.d:
             raise ValueError(f"Vektör boyutu uyumsuzluğu: Query={len(query_vector)}, Index={index.d}")
 
+        # FAISS ile arama yap
         distances, indices = index.search(np.array([query_vector]), top_k)
-        results = [(filenames[i], float(dist)) for i, dist in zip(indices[0], distances[0])]
+        
+        # Sonuçları hazırla
+        results = []
+        for i, (idx, dist) in enumerate(zip(indices[0], distances[0])):
+            if idx < len(filenames):  # Geçerli index kontrolü
+                similarity_score = 1.0 / (1.0 + dist)  # Distance'ı similarity'ye çevir
+                results.append((filenames[idx], similarity_score))
+        
+        # Arama süresini hesapla
+        search_duration = int((time.time() - start_time) * 1000)
+        print(f"🔍 Arama tamamlandı! Süre: {search_duration}ms, Sonuç: {len(results)} görsel")
+        
+        # Arama geçmişini veritabanına kaydet
+        try:
+            _save_search_history(image_path, os.path.basename(image_path), top_k, search_duration, len(results))
+        except Exception as e:
+            print(f"Arama geçmişi kaydedilemedi: {e}")
+        
         return results
+        
     except Exception as e:
         print(f"Search function error: {type(e).__name__}: {str(e)}")
         raise
+
+def _save_search_history(query_image_path, query_image_name, top_k, search_duration_ms, results_count):
+    """Arama geçmişini veritabanına kaydet"""
+    try:
+        query = """
+        INSERT INTO search_history 
+        (query_image_path, query_image_name, top_k, search_duration_ms, results_count, search_type)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """
+        
+        db_manager.execute_query(query, (
+            query_image_path,
+            query_image_name,
+            top_k,
+            search_duration_ms,
+            results_count,
+            'combined'
+        ))
+        
+    except Exception as e:
+        print(f"Arama geçmişi kaydetme hatası: {e}")
 
 # CLI
 def main():
