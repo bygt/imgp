@@ -204,3 +204,166 @@ input[type="file"] { opacity: 0; position: absolute; inset: 0; width: 100%; heig
   .page { padding: 12px; }
   .container { padding: 14px; border-radius: 12px; }
 }
+
+/* URL bilgisi için stil */
+.url-info {
+    margin-top: 8px;
+    padding: 4px 8px;
+    background: rgba(79, 140, 255, 0.1);
+    border-radius: 4px;
+    border-left: 3px solid var(--pri);
+}
+
+.url-info small {
+    color: var(--tx-2);
+    font-size: 0.75rem;
+    word-break: break-all;
+    display: block;
+}
+
+/* Kart tıklama efekti */
+.card {
+    transition: all 0.2s ease;
+}
+
+.card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(79, 140, 255, 0.3);
+    border-color: var(--pri-2);
+}
+
+/* Modal Stilleri */
+.modal {
+    display: none;
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.8);
+    backdrop-filter: blur(5px);
+}
+
+.modal-content {
+    position: relative;
+    margin: 2% auto;
+    padding: 0;
+    width: 90%;
+    max-width: 800px;
+    background: var(--bg-1);
+    border-radius: 12px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+    overflow: hidden;
+}
+
+.modal-close {
+    position: absolute;
+    top: 15px;
+    right: 20px;
+    color: var(--tx-0);
+    font-size: 28px;
+    font-weight: bold;
+    cursor: pointer;
+    z-index: 1001;
+    background: rgba(0, 0, 0, 0.5);
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+}
+
+.modal-close:hover {
+    background: rgba(255, 0, 0, 0.7);
+    transform: scale(1.1);
+}
+
+.modal-image-container {
+    width: 100%;
+    max-height: 60vh;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-2);
+}
+
+.modal-image-container img {
+    max-width: 100%;
+    max-height: 60vh;
+    object-fit: contain;
+    border-radius: 8px;
+}
+
+.modal-info {
+    padding: 20px;
+    background: var(--bg-1);
+}
+
+.modal-info h3 {
+    margin: 0 0 15px 0;
+    color: var(--tx-0);
+    font-size: 1.2rem;
+    word-break: break-all;
+}
+
+.modal-similarity {
+    margin-bottom: 15px;
+    padding: 10px;
+    background: rgba(79, 140, 255, 0.1);
+    border-radius: 6px;
+    border-left: 3px solid var(--pri);
+}
+
+.similarity-label {
+    color: var(--tx-2);
+    font-size: 0.9rem;
+}
+
+#modalSimilarity {
+    color: var(--pri);
+    font-weight: bold;
+    font-size: 1.1rem;
+}
+
+.modal-url {
+    text-align: center;
+}
+
+.url-button {
+    display: inline-block;
+    padding: 12px 24px;
+    background: linear-gradient(135deg, var(--pri), var(--pri-2));
+    color: white;
+    text-decoration: none;
+    border-radius: 8px;
+    font-weight: bold;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 15px rgba(79, 140, 255, 0.3);
+}
+
+.url-button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(79, 140, 255, 0.4);
+    color: white;
+    text-decoration: none;
+}
+
+/* Responsive Modal */
+@media (max-width: 768px) {
+    .modal-content {
+        width: 95%;
+        margin: 5% auto;
+    }
+    
+    .modal-image-container {
+        max-height: 50vh;
+    }
+    
+    .modal-info {
+        padding: 15px;
+    }
+}

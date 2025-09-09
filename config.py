@@ -50,6 +50,6 @@ MODEL_CONFIG = {
 
 # Arama ayarları
 SEARCH_CONFIG = {
-    'default_top_k': 200,
+    'default_top_k': 100,
     'max_top_k': 500
 }

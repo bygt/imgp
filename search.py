@@ -5,11 +5,10 @@ from PIL import Image
 from torchvision import transforms
 import torch
 import clip
-import json
 import time
 
-from config import BACKGROUND_REMOVAL, MODEL_CONFIG
 from database import get_db_manager
+import config
 
 # Veritabanı manager'ı
 db_manager = get_db_manager()
@@ -108,11 +107,36 @@ def get_database_vectors():
         return None, []
 
 def get_index_and_filenames():
-    """Geriye uyumluluk için eski fonksiyon - artık veritabanı kullanıyor"""
-    return get_database_vectors()
+    """FAISS index ve filenames dosyalarını yükle"""
+    try:
+        # FAISS index dosyasını yükle
+        if not os.path.exists(INDEX_FILE):
+            print(f"❌ FAISS index dosyası bulunamadı: {INDEX_FILE}")
+            print("💡 Önce 'python faissb.py' çalıştırın!")
+            return None, []
+        
+        if not os.path.exists(FILENAMES_FILE):
+            print(f"❌ Filenames dosyası bulunamadı: {FILENAMES_FILE}")
+            print("💡 Önce 'python faissb.py' çalıştırın!")
+            return None, []
+        
+        # FAISS index'i yükle
+        index = faiss.read_index(INDEX_FILE)
+        
+        # Filenames dosyasını yükle
+        with open(FILENAMES_FILE, 'r', encoding='utf-8') as f:
+            filenames = [line.strip() for line in f.readlines()]
+        
+        print(f"✅ FAISS index yüklendi: {index.ntotal} vektör, {len(filenames)} dosya")
+        return index, filenames
+        
+    except Exception as e:
+        print(f"❌ FAISS index yükleme hatası: {e}")
+        print("💡 Önce 'python faissb.py' çalıştırın!")
+        return None, []
 
 # DINO ile vektör çıkar
-def extract_dino_features(model, image_path, use_bg_removal=True):
+def extract_dino_features(model, image_path):
     transform = transforms.Compose([
         transforms.Resize(518),
         transforms.CenterCrop(518),
@@ -175,7 +199,7 @@ def create_sliding_windows(image_path, grid_size=3, overlap=0.3):
         return [], []
 
 # CLIP ile vektör çıkar (sadece görsel)
-def extract_clip_features(clip_model, clip_preprocess, image_path, use_bg_removal=False):
+def extract_clip_features(clip_model, clip_preprocess, image_path):
     # Normal görsel işleme (background removal yok)
     image = Image.open(image_path).convert("RGB")
     
@@ -230,34 +254,38 @@ def extract_clip_features_sliding_window(clip_model, clip_preprocess, image_path
         return extract_clip_features(clip_model, clip_preprocess, image_path)
 
 # 🔍 Ana fonksiyon
-def search_similar_images(image_path, top_k: int = 50, use_sliding_window: bool = False):
+def search_similar_images(image_path, top_k: int = None, use_sliding_window: bool = False):
     if not os.path.exists(image_path):
         raise FileNotFoundError(f"Query image not found: {image_path}")
 
     start_time = time.time()
     
+    # Default top_k değerini config'den al
+    if top_k is None:
+        top_k = config.SEARCH_CONFIG['default_top_k']
+    
     try:
         dino_model = load_dino_model()
         clip_model, clip_preprocess = load_clip_model()
 
-        # Arama sırasında query fotoğun arka planını kaldır
-        dino_vec = extract_dino_features(dino_model, image_path, use_bg_removal=True)
+        # DINO vektörü çıkar
+        dino_vec = extract_dino_features(dino_model, image_path)
         
         # Sliding window kullanılıyorsa CLIP için sliding window, yoksa normal
         if use_sliding_window:
             print("🔍 Using sliding window search for better cropped image matching...")
             clip_vec = extract_clip_features_sliding_window(clip_model, clip_preprocess, image_path, grid_size=3)
         else:
-            clip_vec = extract_clip_features(clip_model, clip_preprocess, image_path, use_bg_removal=True)
+            clip_vec = extract_clip_features(clip_model, clip_preprocess, image_path)
         
         query_vector = np.concatenate((dino_vec, clip_vec)).astype('float32')
         query_vector /= np.linalg.norm(query_vector) + 1e-12
 
-        # Veritabanından vektörleri al
-        index, filenames = get_database_vectors()
+        # FAISS index'ini yükle
+        index, filenames = get_index_and_filenames()
         
         if index is None:
-            raise ValueError("Veritabanından vektör yüklenemedi!")
+            raise ValueError("FAISS index yüklenemedi! Önce 'python faissb.py' çalıştırın.")
 
         print(f"Query vektör boyutu: {len(query_vector)}")
         print(f"FAISS index boyutu: {index.d}")
@@ -271,10 +299,23 @@ def search_similar_images(image_path, top_k: int = 50, use_sliding_window: bool 
         
         # Sonuçları hazırla
         results = []
+        
         for i, (idx, dist) in enumerate(zip(indices[0], distances[0])):
-            if idx < len(filenames):  # Geçerli index kontrolü
-                similarity_score = 1.0 / (1.0 + dist)  # Distance'ı similarity'ye çevir
-                results.append((filenames[idx], similarity_score))
+            if idx < len(filenames):
+                similarity_score = 1 / (1 + dist)  
+                similarity_percentage = similarity_score * 100
+                print(similarity_score, similarity_percentage)
+                # URL oluştur - sadece dosya adını al ve .JPG ekle
+                filename = os.path.basename(filenames[idx])  # Sadece dosya adını al
+                filename_with_jpg = f"{filename}.JPG"  # Sonuna .JPG ekle
+                image_url = f"https://uniteksverse.blob.core.windows.net/files/{filename_with_jpg}?v=51526.426"
+                results.append({
+                    'filename': filename,  # Sadece dosya adı
+                    'similarity': similarity_score,  # 0-1 aralığında (eski format için)
+                    'similarity_percentage': similarity_percentage,  # Yüzde olarak
+                    'url': image_url
+                })
+        
         
         # Arama süresini hesapla
         search_duration = int((time.time() - start_time) * 1000)
@@ -330,8 +371,9 @@ def main():
     results = search_similar_images(query_image_path, use_sliding_window=True)
 
     print("\n🔍 Top similar images:")
-    for rank, (filename, sim) in enumerate(results, start=1):
-        print(f"{rank}. {filename} - Similarity: {sim:.4f}")
+    for rank, result in enumerate(results, start=1):
+        print(f"{rank}. {result['filename']} - Similarity: {result['similarity_percentage']:.1f}%")
+        print(f"   URL: {result['url']}")
 
     # Clean uploads
     for f in files:

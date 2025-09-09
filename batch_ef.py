@@ -46,7 +46,6 @@ os.makedirs(vector_dir, exist_ok=True)
 
 image_files = [f for f in os.listdir(image_dir) if f.lower().endswith((".jpg", ".jpeg", ".png"))]
 
-print(f"{len(image_files)} images found.\n")
 
 def process_single_image(args):
     """Tek bir görseli işle"""

@@ -54,6 +54,7 @@
                     </label>
                 </div>
 
+
                 <div class="actions">
                     <button type="submit" class="btn btn--primary">Search</button>
                 </div>
@@ -64,6 +65,28 @@
     <!-- Drag & Drop Indicator -->
     <div id="dragIndicator" class="drag-indicator">
         📷 Drop image here to search
+    </div>
+
+    <!-- Image Modal -->
+    <div id="imageModal" class="modal">
+        <div class="modal-content">
+            <span class="modal-close">&times;</span>
+            <div class="modal-image-container">
+                <img id="modalImage" src="" alt="Modal Image" />
+            </div>
+            <div class="modal-info">
+                <h3 id="modalTitle"></h3>
+                <div class="modal-similarity">
+                    <span class="similarity-label">Similarity:</span>
+                    <span id="modalSimilarity"></span>
+                </div>
+                <div class="modal-url">
+                    <a id="modalUrl" href="#" target="_blank" class="url-button">
+                        🔗 Open Original Image
+                    </a>
+                </div>
+            </div>
+        </div>
     </div>
 
             {% if results %}
@@ -80,21 +103,29 @@
                 </aside>
 
                 <div class="similar-grid" id="resultsGrid">
-                    {% for path, similarity in results %}
-                    <div class="card" data-sim="{{ (similarity + 1) * 50 }}">
+                    {% for result in results %}
+                    <div class="card" data-sim="{{ result.similarity_percentage }}" 
+                         data-image-url="{{ result.url }}" 
+                         data-filename="{{ result.filename }}" 
+                         data-similarity="{{ result.similarity_percentage }}" 
+                         style="cursor: pointer;"
+                         onclick="return false;">
                         <div class="card__image">
-                            <img src="{{ url_for('static', filename='images/' ~ path) }}" alt="{{ path }}" />
+                            <img src="{{ result.url }}" alt="{{ result.filename }}" />
                         </div>
                         <div class="card__body">
-                            <div class="card__title">{{ path }}</div>
+                            <div class="card__title">{{ result.filename }}</div>
                             <div class="score">
                                 <div class="score__row">
                                     <span class="score__label">Similarity</span>
-                                    <span class="score__value">{{ "%.4f"|format(similarity) }}</span>
+                                    <span class="score__value">{{ "%.1f"|format(result.similarity_percentage) }}%</span>
                                 </div>
                                 <div class="score__bar">
-                                    <div class="score__bar-fill" data-width="{{ (((similarity + 1) / 2) * 100)|round(0) }}"></div>
+                                    <div class="score__bar-fill" data-width="{{ result.similarity_percentage|round(0) }}"></div>
                                 </div>
+                            </div>
+                            <div class="url-info">
+                                <small>URL: {{ result.url[:50] }}...</small>
                             </div>
                         </div>
                     </div>
@@ -124,6 +155,14 @@
         const resultsGrid = document.getElementById('resultsGrid');
         const dragIndicator = document.getElementById('dragIndicator');
         const slidingWindow = document.getElementById('slidingWindow');
+        
+        // Modal elements
+        const modal = document.getElementById('imageModal');
+        const modalImage = document.getElementById('modalImage');
+        const modalTitle = document.getElementById('modalTitle');
+        const modalSimilarity = document.getElementById('modalSimilarity');
+        const modalUrl = document.getElementById('modalUrl');
+        const modalClose = document.querySelector('.modal-close');
 
         // Avoid double file dialog: only trigger when clicking outside the native input
         dropzone.addEventListener('click', (e) => {
@@ -263,6 +302,8 @@
                 hiddenInput.value = 'true';
                 form.appendChild(hiddenInput);
             }
+            
+            
         });
 
         function applyClientFilter() {
@@ -292,6 +333,62 @@
                 if (w != null) el.style.width = `${w}%`;
             });
         })();
+
+        // Restore checkbox states from server
+        // Color rerank checkbox will be handled by server-side template
+        
+        // Modal functions
+        function openModal(imageUrl, filename, similarity) {
+            modalImage.src = imageUrl;
+            modalTitle.textContent = filename;
+            modalSimilarity.textContent = similarity.toFixed(1) + '%';
+            modalUrl.href = imageUrl;
+            modal.style.display = 'block';
+            document.body.style.overflow = 'hidden'; // Prevent background scrolling
+        }
+        
+        function closeModal() {
+            modal.style.display = 'none';
+            document.body.style.overflow = 'auto'; // Restore scrolling
+        }
+        
+        // Modal event listeners
+        modalClose.addEventListener('click', closeModal);
+        
+        modal.addEventListener('click', function(e) {
+            if (e.target === modal) {
+                closeModal();
+            }
+        });
+        
+        // Close modal with Escape key
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape' && modal.style.display === 'block') {
+                closeModal();
+            }
+        });
+        
+        // Use event delegation for card clicks
+        document.addEventListener('click', function(e) {
+            // Check if clicked element is a card or inside a card
+            const card = e.target.closest('.card');
+            if (card) {
+                // Prevent ALL default behavior
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+                
+                const imageUrl = card.getAttribute('data-image-url');
+                const filename = card.getAttribute('data-filename');
+                const similarity = parseFloat(card.getAttribute('data-similarity'));
+                
+                if (imageUrl && filename && similarity !== null) {
+                    openModal(imageUrl, filename, similarity);
+                }
+                
+                return false;
+            }
+        });
     </script>
 </body>
 </html>

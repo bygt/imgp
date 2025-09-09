@@ -6,13 +6,14 @@ import numpy as np
 import torch
 from PIL import Image
 from batch_ef import dino_model, clip_model, clip_preprocess, dino_transform
+import config
+
 
 # Mitigate OpenMP runtime conflict on Windows (Torch/FAISS). Use at your own risk.
 os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
 
 from werkzeug.utils import secure_filename
 from search import search_similar_images
-from config import BACKGROUND_REMOVAL, CLIP_PROMPTING
 from database import get_db_manager
 
 app = Flask(__name__)
@@ -108,9 +109,8 @@ def index():
             filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
             file.save(filepath)
 
-            # top_k geniş tutulur; UI tarafında eşik filtrelemesi yapılacak
             try:
-                results = search_similar_images(filepath, top_k=200, use_sliding_window=sliding_window_enabled)
+                results = search_similar_images(filepath, top_k=config.SEARCH_CONFIG['default_top_k'], use_sliding_window=sliding_window_enabled)
             except Exception as e:
                 print(f"Search error: {type(e).__name__}: {str(e)}")
                 import traceback
@@ -133,7 +133,17 @@ def index():
                 # Fallback to original
                 return name
 
-            results = [(resolve_image_filename(name), score) for name, score in results]
+            # Results artık dictionary formatında, sadece filename'leri resolve et
+            resolved_results = []
+            for result in results:
+                resolved_filename = resolve_image_filename(result['filename'])
+                resolved_results.append({
+                    'filename': resolved_filename,
+                    'similarity': result['similarity'],
+                    'similarity_percentage': result['similarity_percentage'],
+                    'url': result['url']
+                })
+            results = resolved_results
 
             return render_template("index.html", results=results, uploaded_image=filename, threshold=threshold)
 
