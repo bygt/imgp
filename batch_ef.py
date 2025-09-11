@@ -40,19 +40,9 @@ except:
         raise
 
 # Load CLIP
-try:
-    print("Loading CLIP model...")
-    torch.cuda.empty_cache() if torch.cuda.is_available() else None
-    clip_model, clip_preprocess = clip.load("ViT-L/14", device=device)
-    clip_model.eval()
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
-    print("CLIP model loaded.")
-except Exception as e:
-    print(f"CLIP loading failed: {e}")
-    raise
-
-print("All models loaded successfully.")
+clip_model, clip_preprocess = clip.load("ViT-L/14", device=device)
+clip_model.eval()
+print("Models loaded.")
 
 # DINO transform
 dino_transform = transforms.Compose([
