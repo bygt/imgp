@@ -20,18 +20,39 @@ vector_dir = "vectors"
 print("Loading models...")
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
-# Load DINOv2 - force offline mode
+# Load DINOv2 - force offline mode with memory optimization
 try:
+    print("Loading DINOv2 model...")
+    torch.cuda.empty_cache() if torch.cuda.is_available() else None
     dino_model = torch.hub.load('facebookresearch/dinov2', 'dinov2_vitl14', source='local', verbose=False).to(device)
+    dino_model.eval()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+    print("DINOv2 model loaded.")
 except:
     # Try cached version
-    dino_model = torch.hub.load('facebookresearch/dinov2', 'dinov2_vitl14', force_reload=False, verbose=False).to(device)
-dino_model.eval()
+    try:
+        dino_model = torch.hub.load('facebookresearch/dinov2', 'dinov2_vitl14', force_reload=False, verbose=False).to(device)
+        dino_model.eval()
+        print("DINOv2 model loaded (fallback).")
+    except Exception as e:
+        print(f"DINOv2 loading failed: {e}")
+        raise
 
 # Load CLIP
-clip_model, clip_preprocess = clip.load("ViT-L/14", device=device)
-clip_model.eval()
-print("Models loaded.")
+try:
+    print("Loading CLIP model...")
+    torch.cuda.empty_cache() if torch.cuda.is_available() else None
+    clip_model, clip_preprocess = clip.load("ViT-L/14", device=device)
+    clip_model.eval()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+    print("CLIP model loaded.")
+except Exception as e:
+    print(f"CLIP loading failed: {e}")
+    raise
+
+print("All models loaded successfully.")
 
 # DINO transform
 dino_transform = transforms.Compose([

@@ -17,6 +17,7 @@ from search import search_similar_images
 from database import get_db_manager
 
 app = Flask(__name__)
+app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'your-secret-key-change-this-in-production')
 UPLOAD_FOLDER = 'static/uploads'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
@@ -139,7 +140,7 @@ def index():
                 resolved_filename = resolve_image_filename(result['filename'])
                 resolved_results.append({
                     'filename': resolved_filename,
-                    'similarity': result['similarity'],
+                    'similarity': result['similarity_percentage'] / 100,  # 0-1 aralığında
                     'similarity_percentage': result['similarity_percentage'],
                     'url': result['url']
                 })

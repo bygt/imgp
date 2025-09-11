@@ -302,16 +302,14 @@ def search_similar_images(image_path, top_k: int = None, use_sliding_window: boo
         
         for i, (idx, dist) in enumerate(zip(indices[0], distances[0])):
             if idx < len(filenames):
-                similarity_score = 1 / (1 + dist)  
-                similarity_percentage = similarity_score * 100
-                print(similarity_score, similarity_percentage)
+                          
+                similarity_percentage = dist * 100
                 # URL oluştur - sadece dosya adını al ve .JPG ekle
                 filename = os.path.basename(filenames[idx])  # Sadece dosya adını al
                 filename_with_jpg = f"{filename}.JPG"  # Sonuna .JPG ekle
                 image_url = f"https://uniteksverse.blob.core.windows.net/files/{filename_with_jpg}?v=51526.426"
                 results.append({
                     'filename': filename,  # Sadece dosya adı
-                    'similarity': similarity_score,  # 0-1 aralığında (eski format için)
                     'similarity_percentage': similarity_percentage,  # Yüzde olarak
                     'url': image_url
                 })
